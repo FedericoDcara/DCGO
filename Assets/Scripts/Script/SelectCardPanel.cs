@@ -274,27 +274,7 @@ public class SelectCardPanel : MonoBehaviour
                 #region right click
                 if (Input.GetMouseButtonUp(1))
                 {
-                    if (cardSource1 != null)
-                    {
-                        //If you can't see the face down card
-                        if (!CanLookReverseCard)
-                        {
-                            if (!cardSource1.IsFlipped)
-                            {
-                                GManager.instance.cardDetail.OpenCardDetail(cardSource1, true);
-
-                                GManager.instance.PlayDecisionSE();
-                            }
-                        }
-
-                        //If you can see the card face down
-                        else
-                        {
-                            GManager.instance.cardDetail.OpenCardDetail(cardSource1, true);
-
-                            GManager.instance.PlayDecisionSE();
-                        }
-                    }
+                    OpenSelectPanelCardDetail(cardSource1, CanLookReverseCard);
                 }
                 #endregion
 
@@ -308,6 +288,10 @@ public class SelectCardPanel : MonoBehaviour
             #endregion
 
             eventTrigger.triggers.Add(entry);
+            AddHandCardLongPressTriggers(eventTrigger, handCard);
+
+            // Long-press inspect uses HandCard.OnRightClicked; allow face-down when panel permits it.
+            handCard.ShowOpponent = CanLookReverseCard;
 
             handCard.SetUpHandCard(cardSource);
 
@@ -685,4 +669,42 @@ public class SelectCardPanel : MonoBehaviour
         ReturnToSelectCardButton.onClick.AddListener(() => OnClickReturnToSelectCardButton());
     }
     #endregion
+
+    void OpenSelectPanelCardDetail(CardSource cardSource1, bool canLookReverseCard)
+    {
+        if (cardSource1 == null)
+            return;
+
+        if (!canLookReverseCard)
+        {
+            if (!cardSource1.IsFlipped)
+            {
+                GManager.instance.cardDetail.OpenCardDetail(cardSource1, true);
+                GManager.instance.PlayDecisionSE();
+            }
+        }
+        else
+        {
+            GManager.instance.cardDetail.OpenCardDetail(cardSource1, true);
+            GManager.instance.PlayDecisionSE();
+        }
+    }
+
+    static void AddHandCardLongPressTriggers(EventTrigger eventTrigger, HandCard handCard)
+    {
+        EventTrigger.Entry pointerDown = new EventTrigger.Entry();
+        pointerDown.eventID = EventTriggerType.PointerDown;
+        pointerDown.callback.AddListener((data) => handCard.PointerDown(data));
+        eventTrigger.triggers.Add(pointerDown);
+
+        EventTrigger.Entry pointerUp = new EventTrigger.Entry();
+        pointerUp.eventID = EventTriggerType.PointerUp;
+        pointerUp.callback.AddListener((data) => handCard.PointerUp(data));
+        eventTrigger.triggers.Add(pointerUp);
+
+        EventTrigger.Entry pointerExit = new EventTrigger.Entry();
+        pointerExit.eventID = EventTriggerType.PointerExit;
+        pointerExit.callback.AddListener((data) => handCard.PointerExit(data));
+        eventTrigger.triggers.Add(pointerExit);
+    }
 }
