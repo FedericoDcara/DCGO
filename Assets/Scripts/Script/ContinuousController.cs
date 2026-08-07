@@ -524,9 +524,17 @@ public class ContinuousController : MonoBehaviour
     public async void Init()
     {
         Application.targetFrameRate = 60;
+#if !UNITY_EDITOR && UNITY_ANDROID
+        // Easier scroll-vs-drag distinction on touchscreens (default is often too low).
+        if (EventSystem.current != null)
+            EventSystem.current.pixelDragThreshold = Mathf.Max(EventSystem.current.pixelDragThreshold, 25);
+#endif
         long random = RandomUtility.GetSecureRandom();
         GameRandom.Seed(random);
         Debug.Log($"Game Initialize - random number sequence initialization, GameRandom.Seed:{random}");
+
+        // Android APK has no Assets/Textures next to the binary (PC layout). Seed UI mats/backs from StreamingAssets.
+        await StreamingAssetsUtility.EnsureBundledTexturesSeeded();
 
         Sprite reverseCardSprite = await StreamingAssetsUtility.GetSprite("card_back_main");
 
@@ -569,6 +577,12 @@ public class ContinuousController : MonoBehaviour
 
         //Graphics
         LoadShowBackgroundParticle();
+        ApplyAndroidVisualDefaultsOnce();
+#if !UNITY_EDITOR && UNITY_ANDROID
+        // Medium quality (index 1) keeps URP particles / FX closer to PC without using High.
+        if (QualitySettings.names != null && QualitySettings.names.Length > 1)
+            QualitySettings.SetQualityLevel(1, true);
+#endif
 
         // Sound
         LoadVolume();
@@ -625,6 +639,7 @@ public class ContinuousController : MonoBehaviour
     public void SaveDeckData(DeckData data)
     {
         string savePath = StreamingAssetsUtility.GetStreamingAssetPath("Decks", false);
+        StreamingAssetsUtility.EnsureDirectoryExists(savePath);
 
         File.WriteAllText($"{savePath}/{data.DeckName}_{data.DeckID}.txt", DeckCodeUtility.GetDeckBuilderFile(data));
     }
@@ -904,7 +919,7 @@ public class ContinuousController : MonoBehaviour
     #endregion
 
     #region Show CutIn Animation
-    public bool showCutInAnimation = false;
+    public bool showCutInAnimation = true;
     string _showCutInAnimationKey = "ShowCutInAnimation";
 
     public void SaveShowCutInAnimation()
@@ -914,7 +929,8 @@ public class ContinuousController : MonoBehaviour
     }
     public void LoadShowCutInAnimation()
     {
-        showCutInAnimation = PlayerPrefsUtil.GetBool(_showCutInAnimationKey, false);
+        // Default ON so digivolve / jogress / burst cut-ins match the PC look.
+        showCutInAnimation = PlayerPrefsUtil.GetBool(_showCutInAnimationKey, true);
     }
     #endregion
 
@@ -979,7 +995,7 @@ public class ContinuousController : MonoBehaviour
     #endregion
 
     #region Show background particle
-    [HideInInspector] public bool showBackgroundParticle = false;
+    [HideInInspector] public bool showBackgroundParticle = true;
     string _showBackgroundParticleKey = "ShowBackgroundParticle";
 
     public void SaveShowBackgroundParticle()
@@ -989,7 +1005,28 @@ public class ContinuousController : MonoBehaviour
     }
     public void LoadShowBackgroundParticle()
     {
+        // Default ON (PC + Android). Players can disable in Graphics options if needed.
         showBackgroundParticle = PlayerPrefsUtil.GetBool(_showBackgroundParticleKey, true);
+    }
+
+    /// <summary>
+    /// One-time migration: older Android builds defaulted cut-ins/particles off.
+    /// Flip them on once so existing installs match the PC visual baseline.
+    /// </summary>
+    void ApplyAndroidVisualDefaultsOnce()
+    {
+#if !UNITY_EDITOR && UNITY_ANDROID
+        const string migrationKey = "AndroidVisualDefaults_v1";
+        if (PlayerPrefs.GetInt(migrationKey, 0) == 1)
+            return;
+
+        showCutInAnimation = true;
+        showBackgroundParticle = true;
+        SaveShowCutInAnimation();
+        SaveShowBackgroundParticle();
+        PlayerPrefs.SetInt(migrationKey, 1);
+        PlayerPrefs.Save();
+#endif
     }
     #endregion
 

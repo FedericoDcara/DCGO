@@ -114,6 +114,7 @@ public class Draggable_HandCard : Draggable
 
             if (handCard.CanDrag)
             {
+                handCard.CancelLongPress();
                 base.OnBeginDrag(eventData);
 
                 isExpand = false;

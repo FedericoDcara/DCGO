@@ -676,12 +676,12 @@ public class FieldPermanentCard : MonoBehaviour
 
         #region Get long press
 #if !UNITY_EDITOR && UNITY_ANDROID
-        if (pressing)
+        if (_pressing)
         {
-            if(requiredTime < Time.time)
+            if (_requiredTime < Time.time)
             {
                 OnRightClicked();
-                pressing = false;
+                _pressing = false;
             }
         }
 #endif
@@ -721,18 +721,17 @@ public class FieldPermanentCard : MonoBehaviour
 
     public void PointerUp(BaseEventData eventData)
     {
-        if (_pressing)
-        {
-            _pressing = false;
-        }
+        CancelLongPress();
     }
 
     public void PointerExit(BaseEventData eventData)
     {
-        if (_pressing)
-        {
-            _pressing = false;
-        }
+        CancelLongPress();
+    }
+
+    public void CancelLongPress()
+    {
+        _pressing = false;
     }
 
     #region このオブジェクトを削除
@@ -869,6 +868,7 @@ public class FieldPermanentCard : MonoBehaviour
 
     public void OnBeginDrag()
     {
+        CancelLongPress();
         OnBeginDragAction?.Invoke(this);
     }
 
