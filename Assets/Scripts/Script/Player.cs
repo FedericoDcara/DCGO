@@ -722,6 +722,9 @@ public class Player : MonoBehaviour
     }
     [Header("プレイヤー名")]
     public TextMeshProUGUI PlayerNameText;
+
+    /// <summary>MMR shown on the battle name plate (ranked only).</summary>
+    public int BattleDisplayedMmr { get; set; } = RankedRating.DefaultMmr;
     #endregion
 
     #region 勝利数

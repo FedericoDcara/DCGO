@@ -333,10 +333,16 @@ public class HandCard : MonoBehaviour
         {
             if (cardEffect != null)
             {
-                if (!string.IsNullOrEmpty(cardEffect.EffectName))
+                string displayName = cardEffect.EffectName;
+                if (string.IsNullOrEmpty(displayName))
+                {
+                    displayName = cardEffect.EffectDiscription;
+                }
+
+                if (!string.IsNullOrEmpty(displayName))
                 {
                     SkillNameText.transform.parent.gameObject.SetActive(true);
-                    SkillNameText.text = cardEffect.EffectName;
+                    SkillNameText.text = displayName;
                 }
             }
         }
@@ -480,6 +486,8 @@ public class HandCard : MonoBehaviour
     }
 
     public bool ShowOpponent { get; set; } = false;
+    // Select-panel inspect without marking as hand card (avoids SkillName being cleared).
+    public bool AllowFaceDownInspect { get; set; } = false;
     bool onYourHand()
     {
         if (GManager.instance != null)
@@ -983,7 +991,7 @@ public class HandCard : MonoBehaviour
                 }
             }
 
-            if (ShowOpponent)
+            if (ShowOpponent || AllowFaceDownInspect)
             {
                 CanLook = true;
             }

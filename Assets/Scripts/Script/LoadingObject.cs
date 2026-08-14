@@ -28,17 +28,20 @@ public class LoadingObject : MonoBehaviour
 
         yield return new WaitWhile(() => !this.gameObject.activeSelf || !this.transform.parent.gameObject.activeSelf);
 
+        StopLoadingTextCoroutine();
+
         if(ContinuousController.instance != null)
         {
-            ContinuousController.instance.StartCoroutine(SetLoadingText(DefaultString));
+            setLoadingTextHost = ContinuousController.instance;
+            setLoadingTextCoroutine = ContinuousController.instance.StartCoroutine(SetLoadingText(DefaultString));
         }
-
         else
         {
-            StartCoroutine(SetLoadingText(DefaultString));
+            setLoadingTextHost = this;
+            setLoadingTextCoroutine = StartCoroutine(SetLoadingText(DefaultString));
         }
 
-        if (AnimationParent.activeSelf)
+        if (AnimationParent != null && AnimationParent.activeSelf)
         {
             Agumon.transform.localPosition = defaultAgumonPos;
             moveAgumonCoroutine = StartCoroutine(moveAgumonIEnumerator());
@@ -46,6 +49,8 @@ public class LoadingObject : MonoBehaviour
     }
 
     Coroutine moveAgumonCoroutine = null;
+    Coroutine setLoadingTextCoroutine = null;
+    MonoBehaviour setLoadingTextHost = null;
 
     IEnumerator SetLoadingText(string DefaultString)
     {
@@ -53,7 +58,7 @@ public class LoadingObject : MonoBehaviour
 
         int count = 0;
 
-        while(true)
+        while (LoadingText)
         {
             count++;
 
@@ -71,6 +76,25 @@ public class LoadingObject : MonoBehaviour
 
             yield return new WaitForSeconds(waitTime);
         }
+
+        setLoadingTextCoroutine = null;
+        setLoadingTextHost = null;
+    }
+
+    void StopLoadingTextCoroutine()
+    {
+        if (setLoadingTextCoroutine == null)
+        {
+            return;
+        }
+
+        if (setLoadingTextHost != null)
+        {
+            setLoadingTextHost.StopCoroutine(setLoadingTextCoroutine);
+        }
+
+        setLoadingTextCoroutine = null;
+        setLoadingTextHost = null;
     }
 
     IEnumerator moveAgumonIEnumerator()
@@ -91,12 +115,15 @@ public class LoadingObject : MonoBehaviour
 
     public IEnumerator EndLoading()
     {
+        StopLoadingTextCoroutine();
+
         if(moveAgumonCoroutine != null)
         {
             StopCoroutine(moveAgumonCoroutine);
+            moveAgumonCoroutine = null;
         }
 
-        if(AnimationParent.activeSelf)
+        if(AnimationParent != null && AnimationParent.activeSelf)
         {
             bool end = false;
             Sequence sequence = DOTween.Sequence();
@@ -113,11 +140,24 @@ public class LoadingObject : MonoBehaviour
         
         anim.SetInteger("Close", 1);
 
-        LoadingText.gameObject.SetActive(false);
+        if (LoadingText)
+        {
+            LoadingText.gameObject.SetActive(false);
+        }
 
-        yield return new WaitWhile(() => this.gameObject.activeSelf);
+        float closeWait = 0f;
+        while (this.gameObject.activeSelf && closeWait < 3f)
+        {
+            closeWait += Time.unscaledDeltaTime;
+            yield return null;
+        }
 
-        if (AnimationParent.activeSelf)
+        if (this.gameObject.activeSelf)
+        {
+            Off();
+        }
+
+        if (AnimationParent != null && AnimationParent.activeSelf)
         {
             Agumon.transform.localPosition = defaultAgumonPos;
         }

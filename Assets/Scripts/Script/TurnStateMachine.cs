@@ -116,13 +116,23 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
         #endregion
 
         #region Save each player name
-        SetPlayerName(0, PlayerName(MasterPlayer));
-        SetPlayerName(1, PlayerName(nonMasterPlayer));
+        ApplyPlayerNamePlate(0, MasterPlayer);
+        ApplyPlayerNamePlate(1, nonMasterPlayer);
+
+        if (ContinuousController.instance != null && ContinuousController.instance.isRanked)
+        {
+            StartCoroutine(RefreshRankedNamePlatesLater(MasterPlayer, nonMasterPlayer));
+        }
         #endregion
 
-        #region Player name for that Photon client
-        string PlayerName(Photon.Realtime.Player player)
+        #region Player name / ranked MMR for Photon clients
+        string ResolvePhotonPlayerName(Photon.Realtime.Player player)
         {
+            if (player == null)
+            {
+                return GManager.instance != null && GManager.instance.IsAI ? "Bot" : "";
+            }
+
             #region 対人戦
             if (!GManager.instance.IsAI)
             {
@@ -146,12 +156,7 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
                             return "You";
                         }
 
-                        else
-                        {
-                            return "Opponent";
-                        }
-
-                        //return playerName;
+                        return "Opponent";
                     }
                 }
 
@@ -161,26 +166,14 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
             #endregion
 
             #region AI mode
-            else
+            if (player == MasterPlayer)
             {
-                #region Player Name
-                if (player == MasterPlayer)
-                {
-                    return ContinuousController.instance.PlayerName;
-                }
-                #endregion
-
-                #region AI Player Name
-                else
-                {
-                    return "Bot";
-                }
-                #endregion
-
+                return ContinuousController.instance.PlayerName;
             }
+
+            return "Bot";
             #endregion
 
-            #region Determine if that Photon client has custom properties for player names
             bool HasPlayerName(Photon.Realtime.Player _player)
             {
                 ExitGames.Client.Photon.Hashtable _hashtable = _player.CustomProperties;
@@ -200,24 +193,113 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
 
                 return false;
             }
-            #endregion
         }
-        #endregion
 
-        #region Store player names in Player class and display UI
-        void SetPlayerName(int _PlayerID, string _PlayerName)
+        int ResolvePhotonMmr(Photon.Realtime.Player photonPlayer, bool isLocalGamePlayer)
         {
-            Player player = gameContext.PlayerFromID(_PlayerID);
-            player.PlayerName = _PlayerName;
-
-            if (player.PlayerNameText != null)
+            if (photonPlayer != null &&
+                photonPlayer.CustomProperties != null &&
+                photonPlayer.CustomProperties.TryGetValue(RankedKeys.MmrProperty, out object mmrObj) &&
+                mmrObj != null)
             {
-                player.PlayerNameText.transform.parent.gameObject.SetActive(true);
-                player.PlayerNameText.gameObject.SetActive(true);
-
-                if(player.isYou || GManager.instance.IsAI)
-                    player.PlayerNameText.text = player.PlayerName;
+                try
+                {
+                    return Convert.ToInt32(mmrObj);
+                }
+                catch
+                {
+                    // fall through
+                }
             }
+
+            if (isLocalGamePlayer &&
+                RankedServices.Instance != null &&
+                RankedServices.Instance.Profile != null &&
+                RankedServices.Instance.Profile.Cached != null)
+            {
+                return RankedServices.Instance.Profile.Cached.mmr;
+            }
+
+            return RankedRating.DefaultMmr;
+        }
+
+        void ApplyPlayerNamePlate(int playerId, Photon.Realtime.Player photonPlayer)
+        {
+            string rawName = ResolvePhotonPlayerName(photonPlayer);
+            Player player = gameContext.PlayerFromID(playerId);
+            if (player == null)
+            {
+                return;
+            }
+
+            player.PlayerName = rawName;
+
+            if (player.PlayerNameText == null)
+            {
+                return;
+            }
+
+            player.PlayerNameText.transform.parent.gameObject.SetActive(true);
+            player.PlayerNameText.gameObject.SetActive(true);
+
+            // Use raw name for label (PlayerName getter forces "Opponent" for remote PvP).
+            string display = string.IsNullOrEmpty(rawName) ? (player.isYou ? "You" : "Opponent") : rawName;
+
+            if (ContinuousController.instance != null && ContinuousController.instance.isRanked)
+            {
+                int mmr = ResolvePhotonMmr(photonPlayer, player.isYou);
+                player.BattleDisplayedMmr = mmr;
+                display = $"{display}  {RankedRating.FormatBesideName(mmr)}";
+
+                // Fit "Name  Silver 1056" in the name bar
+                player.PlayerNameText.enableAutoSizing = true;
+                player.PlayerNameText.fontSizeMin = 14f;
+                if (player.PlayerNameText.fontSize > 1f)
+                {
+                    player.PlayerNameText.fontSizeMax = player.PlayerNameText.fontSize;
+                }
+                else
+                {
+                    player.PlayerNameText.fontSizeMax = 36f;
+                }
+            }
+
+            player.PlayerNameText.text = display;
+        }
+
+        IEnumerator RefreshRankedNamePlatesLater(
+            Photon.Realtime.Player masterPhoton,
+            Photon.Realtime.Player nonMasterPhoton)
+        {
+            // Props can arrive shortly after room enter — re-apply once after a short wait.
+            const float totalWait = 1.5f;
+            const float step = 0.25f;
+            float waited = 0f;
+
+            while (waited < totalWait)
+            {
+                yield return new WaitForSeconds(step);
+                waited += step;
+
+                bool bothHaveMmr =
+                    (masterPhoton == null || PhotonHasMmr(masterPhoton)) &&
+                    (nonMasterPhoton == null || PhotonHasMmr(nonMasterPhoton));
+
+                if (bothHaveMmr)
+                {
+                    break;
+                }
+            }
+
+            ApplyPlayerNamePlate(0, masterPhoton);
+            ApplyPlayerNamePlate(1, nonMasterPhoton);
+        }
+
+        bool PhotonHasMmr(Photon.Realtime.Player photonPlayer)
+        {
+            return photonPlayer != null &&
+                   photonPlayer.CustomProperties != null &&
+                   photonPlayer.CustomProperties.ContainsKey(RankedKeys.MmrProperty);
         }
         #endregion
         #endregion
@@ -256,37 +338,7 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
         }
 
         #region Deciding whether to attack first or last
-        gameContext.TurnPlayer = gameContext.PlayerFromID(GameRandom.Range(0, 2));
-
-        #region get first player from room custom property
-        int firstPlayerId = -1;
-
-        ExitGames.Client.Photon.Hashtable roomHash = PhotonNetwork.CurrentRoom.CustomProperties;
-
-        if (roomHash != null)
-        {
-            if (roomHash.TryGetValue(DataBase.FirstPlayerKey, out object value))
-            {
-                if (value is int)
-                {
-                    firstPlayerId = (int)value;
-                }
-            }
-        }
-
-        if (firstPlayerId >= 0)
-        {
-            foreach (Photon.Realtime.Player player in PhotonNetwork.PlayerList)
-            {
-                if (player.ActorNumber == firstPlayerId)
-                {
-                    int playerID = player.ActorNumber == PhotonNetwork.CurrentRoom.MasterClientId ? 0 : 1;
-                    gameContext.TurnPlayer = gameContext.PlayerFromID(playerID).Enemy;
-                }
-            }
-        }
-        #endregion
-
+        yield return StartCoroutine(ResolveFirstPlayerCoroutine());
         #endregion
 
 
@@ -297,6 +349,95 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
         if (GManager.instance.bgms.Count >= 1)
         {
             GManager.instance.BattleBGM.StartPlayBGM(GManager.instance.bgms[UnityEngine.Random.Range(0, GManager.instance.bgms.Count)]);
+        }
+    }
+
+    IEnumerator ResolveFirstPlayerCoroutine()
+    {
+        string localId = TournamentState.EnsureLocalPlayerId();
+        var cc = ContinuousController.instance;
+        var match = cc != null && cc.isTournament && cc.TournamentState != null
+            ? cc.TournamentState.FindActiveMatchFor(localId)
+            : null;
+        bool rematch = match != null && match.gameIndex > 0;
+
+        if (rematch)
+        {
+            string loserId = match.lastGameLoserUserId;
+            float waited = 0f;
+            while (string.IsNullOrEmpty(loserId) && waited < 4f)
+            {
+                if (PhotonNetwork.InRoom &&
+                    PhotonNetwork.CurrentRoom.CustomProperties.TryGetValue(TournamentKeys.LastLoserProperty, out object loserObj) &&
+                    loserObj is string roomLoser &&
+                    !string.IsNullOrEmpty(roomLoser))
+                {
+                    loserId = roomLoser;
+                    match.lastGameLoserUserId = roomLoser;
+                    break;
+                }
+
+                waited += Time.unscaledDeltaTime;
+                yield return null;
+            }
+
+            if (!string.IsNullOrEmpty(loserId) && !TournamentKeys.IsBye(loserId))
+            {
+                bool localGoesFirst = loserId == localId;
+                gameContext.TurnPlayer = localGoesFirst ? gameContext.Opponent : gameContext.You;
+                Debug.Log($"[Battle] Rematch first=loser {loserId} youAreFirst={localGoesFirst} room={PhotonNetwork.CurrentRoom?.Name}");
+                yield break;
+            }
+        }
+
+        // Game 1: shared GameRandom seed. Ignore leftover FirstPlayerId from a previous game.
+        gameContext.TurnPlayer = gameContext.PlayerFromID(GameRandom.Range(0, 2));
+        if (!rematch)
+        {
+            int actor = ReadRoomFirstPlayerActor();
+            if (actor >= 0)
+            {
+                ApplyFirstPlayerActor(actor);
+            }
+        }
+
+        Debug.Log($"[Battle] First player rematch={rematch} youAreFirst={gameContext.NonTurnPlayer != null && gameContext.NonTurnPlayer.isYou} room={PhotonNetwork.CurrentRoom?.Name}");
+    }
+
+    static int ReadRoomFirstPlayerActor()
+    {
+        if (!PhotonNetwork.InRoom || PhotonNetwork.CurrentRoom.CustomProperties == null)
+        {
+            return -1;
+        }
+
+        if (PhotonNetwork.CurrentRoom.CustomProperties.TryGetValue(DataBase.FirstPlayerKey, out object value) &&
+            value is int actor &&
+            actor >= 0)
+        {
+            return actor;
+        }
+
+        return -1;
+    }
+
+    void ApplyFirstPlayerActor(int firstPlayerActor)
+    {
+        foreach (Photon.Realtime.Player player in PhotonNetwork.PlayerList)
+        {
+            if (player.ActorNumber != firstPlayerActor)
+            {
+                continue;
+            }
+
+            int playerID = player.ActorNumber == PhotonNetwork.CurrentRoom.MasterClientId ? 0 : 1;
+            Player mapped = gameContext.PlayerFromID(playerID);
+            if (mapped != null && mapped.Enemy != null)
+            {
+                gameContext.TurnPlayer = mapped.Enemy;
+            }
+
+            return;
         }
     }
     #endregion
@@ -426,7 +567,8 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
 
                     void SetRedraw_RPC(int playerId, bool _isDraw)
                     {
-                        photonView.RPC("SetRedraw", RpcTarget.All, playerId, _isDraw);
+                        SetRedraw(playerId, _isDraw);
+                        photonView.RPC("SetRedraw", RpcTarget.Others, playerId, _isDraw);
                     }
                 }
             }
@@ -3305,6 +3447,13 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
 
     public void EndGame(Player Winner, bool Surrendered, string effectName = "")
     {
+        if (endGame)
+        {
+            return;
+        }
+
+        endGame = true;
+
         foreach (GameObject gb in GManager.instance.CloseWhenEndingGameObjects)
         {
             if (gb != null)
@@ -3315,18 +3464,22 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
 
         ContinuousController.instance.CanSetRandom = false;
 
-        if (PhotonNetwork.InRoom)
+        // Do not wipe Photon room/player props mid-tournament — Bo3 rematch needs
+        // TourneyLockedDeck, TourneyPlayerId, and series room keys.
+        bool isTournament = ContinuousController.instance.isTournament;
+        if (PhotonNetwork.InRoom && !isTournament)
         {
             PhotonNetwork.CurrentRoom.SetCustomProperties(new ExitGames.Client.Photon.Hashtable());
         }
 
-        if (!ContinuousController.instance.isRandomMatch && !ContinuousController.instance.isAI)
+        if (!ContinuousController.instance.isRandomMatch &&
+            !ContinuousController.instance.isRanked &&
+            !ContinuousController.instance.isAI &&
+            !isTournament)
         {
             Debug.Log("Player property initialization");
             PhotonNetwork.LocalPlayer.SetCustomProperties(new ExitGames.Client.Photon.Hashtable());
         }
-
-        endGame = true;
 
         if (gameContext.TurnPlayer != null)
         {
@@ -3342,6 +3495,11 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
 
         GManager.instance.optionPanel.Close_(false);
 
+        if (GManager.instance.selectCardPanel != null)
+        {
+            GManager.instance.selectCardPanel.CloseSelectCardPanel();
+        }
+
         GManager.instance.LoadingObject.gameObject.SetActive(false);
 
         GManager.instance.resultObject.ShowResult(Winner, Surrendered, effectName);
@@ -3352,7 +3510,12 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
 
         StopAllCoroutines();
         GManager.instance.StopAllCoroutines();
-        ContinuousController.instance.StopAllCoroutines();
+        // Do NOT StopAllCoroutines on ContinuousController while ranked/tournament
+        // teardown needs DontDestroyOnLoad hosts / EndBattle to keep working.
+        if (!ContinuousController.instance.isRanked && !ContinuousController.instance.isTournament)
+        {
+            ContinuousController.instance.StopAllCoroutines();
+        }
 
         ContinuousController.instance.StartCoroutine(GManager.instance.BattleBGM.FadeOut(1));
 

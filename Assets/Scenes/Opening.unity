@@ -96928,7 +96928,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 0, y: -107.8}
+  m_AnchoredPosition: {x: 0, y: -70}
   m_SizeDelta: {x: 100, y: 100}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &2164528303833913424
@@ -97643,8 +97643,8 @@ MonoBehaviour:
   m_ChildAlignment: 4
   m_StartCorner: 0
   m_StartAxis: 0
-  m_CellSize: {x: 961, y: 180.7}
-  m_Spacing: {x: 107.12, y: 32.4}
+  m_CellSize: {x: 961, y: 128}
+  m_Spacing: {x: 107.12, y: 14}
   m_Constraint: 1
   m_ConstraintCount: 1
 --- !u!1001 &2995724519246280774
@@ -108476,7 +108476,9 @@ MonoBehaviour:
   selectBattleMode: {fileID: 791626760}
   selectBattleDeck: {fileID: 1378253545}
   lobbyManager_RandomMatch: {fileID: 848966721}
+  lobbyManager_RankedMatch: {fileID: 0}
   roomManager: {fileID: 1337625605}
+  tournamentLobbyManager: {fileID: 0}
 --- !u!4 &7827412352956199572
 Transform:
   m_ObjectHideFlags: 0

@@ -1,11 +1,16 @@
 ﻿using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+
 public class PlayerInfo : MonoBehaviour
 {
     public InputField PlayerNameInputField;
     public Text WinCountText;
+
+    [Header("Ranked (optional – created at runtime if missing)")]
+    public Text RankedStatusText;
+
+    string _baseWinCountText;
 
     private void Start()
     {
@@ -18,10 +23,184 @@ public class PlayerInfo : MonoBehaviour
         PlayerNameInputField.characterLimit = ContinuousController.instance.PlayerNameMaxLength;
         PlayerNameInputField.onEndEdit.RemoveAllListeners();
         PlayerNameInputField.text = ContinuousController.instance.PlayerName;
-        WinCountText.text = ContinuousController.instance.WinCount.ToString();
+        _baseWinCountText = ContinuousController.instance.WinCount.ToString();
+        if (WinCountText != null)
+        {
+            WinCountText.text = _baseWinCountText;
+        }
 
         this.gameObject.SetActive(true);
         PlayerNameInputField.onEndEdit.AddListener(SavePlayerName);
+
+        EnsureRankStatusTextVisible();
+        LayoutRankStatusText();
+        RefreshRankedStatus();
+        LoadRankedProfileAsync();
+    }
+
+    /// <summary>
+    /// Home "WinCount" is inactive in Opening, so rank uses a dedicated Text under PlayerInfo.
+    /// </summary>
+    void EnsureRankStatusTextVisible()
+    {
+        if (RankedStatusText != null)
+        {
+            RankedStatusText.gameObject.SetActive(true);
+            ApplyRankTextStyle(RankedStatusText);
+            return;
+        }
+
+        var go = new GameObject("RankedStatusText", typeof(RectTransform));
+        go.layer = gameObject.layer;
+        var text = go.AddComponent<Text>();
+        ApplyRankTextStyle(text);
+        text.raycastTarget = false;
+        RankedStatusText = text;
+        LayoutRankStatusText();
+    }
+
+    /// <summary>
+    /// Place rank directly under the nick InputField (PlayerName bar).
+    /// </summary>
+    void LayoutRankStatusText()
+    {
+        if (RankedStatusText == null)
+        {
+            return;
+        }
+
+        var rt = RankedStatusText.GetComponent<RectTransform>();
+        if (rt == null)
+        {
+            return;
+        }
+
+        ApplyRankTextStyle(RankedStatusText);
+
+        RectTransform nameRt = PlayerNameInputField != null
+            ? PlayerNameInputField.GetComponent<RectTransform>()
+            : null;
+
+        rt.localRotation = Quaternion.identity;
+        rt.localScale = Vector3.one;
+
+        if (nameRt != null)
+        {
+            // Child of the nick field so y=0 is the bar bottom — no world-corner math.
+            if (rt.parent != nameRt)
+            {
+                rt.SetParent(nameRt, false);
+            }
+
+            rt.anchorMin = new Vector2(0f, 0f);
+            rt.anchorMax = new Vector2(0f, 0f);
+            rt.pivot = new Vector2(0f, 1f);
+            // A few units under the bottom-left of the name/nick input
+            rt.anchoredPosition = new Vector2(12f, -10f);
+            rt.sizeDelta = new Vector2(Mathf.Max(700f, nameRt.rect.width > 1f ? nameRt.rect.width + 80f : 800f), 52f);
+        }
+        else
+        {
+            if (rt.parent != transform)
+            {
+                rt.SetParent(transform, false);
+            }
+
+            rt.anchorMin = new Vector2(0.5f, 0.5f);
+            rt.anchorMax = new Vector2(0.5f, 0.5f);
+            rt.pivot = new Vector2(0f, 1f);
+            rt.anchoredPosition = new Vector2(-80f, -55f);
+            rt.sizeDelta = new Vector2(720f, 52f);
+        }
+    }
+
+    void ApplyRankTextStyle(Text text)
+    {
+        if (text == null)
+        {
+            return;
+        }
+
+        Text sample = null;
+        if (PlayerNameInputField != null && PlayerNameInputField.textComponent != null)
+        {
+            sample = PlayerNameInputField.textComponent;
+        }
+        else if (WinCountText != null)
+        {
+            sample = WinCountText;
+        }
+
+        if (sample != null && sample.font != null)
+        {
+            text.font = sample.font;
+            text.material = sample.material;
+        }
+        else
+        {
+            text.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+        }
+
+        text.color = Color.white;
+        // Match nick field text scale (name text component is often ~40)
+        int size = 36;
+        if (sample != null && sample.fontSize > 0 && sample.fontSize <= 80)
+        {
+            size = Mathf.Clamp(sample.fontSize, 28, 44);
+        }
+
+        text.fontSize = size;
+        text.fontStyle = FontStyle.Bold;
+        text.alignment = TextAnchor.UpperLeft;
+        text.horizontalOverflow = HorizontalWrapMode.Overflow;
+        text.verticalOverflow = VerticalWrapMode.Overflow;
+        text.resizeTextForBestFit = false;
+        text.lineSpacing = 1f;
+    }
+
+    public void RefreshRankedStatus()
+    {
+        EnsureRankStatusTextVisible();
+        LayoutRankStatusText();
+
+        var ranked = RankedServices.Instance;
+        var profile = ranked != null && ranked.Auth != null && ranked.Auth.IsLoggedIn
+            ? ranked.Profile?.Cached
+            : null;
+
+        if (profile != null)
+        {
+            if (RankedStatusText != null)
+            {
+                RankedStatusText.gameObject.SetActive(true);
+                RankedStatusText.text = profile.FormatStatusLine();
+            }
+
+            return;
+        }
+
+        if (RankedStatusText != null)
+        {
+            RankedStatusText.text = LocalizeUtility.GetLocalizedString(
+                EngMessage: "Ranked: …",
+                JpnMessage: "ランク: …");
+        }
+    }
+
+    public void LoadRankedProfileAsync()
+    {
+        if (ContinuousController.instance != null)
+        {
+            ContinuousController.instance.StartCoroutine(LoadRankedProfileCoroutine());
+        }
+    }
+
+    IEnumerator LoadRankedProfileCoroutine()
+    {
+        yield return RankedServices.EnsureExists().BootstrapForRanked();
+        // Layout again after canvas settles
+        yield return null;
+        RefreshRankedStatus();
     }
 
     public void OffPlayerInfo()
@@ -33,7 +212,7 @@ public class PlayerInfo : MonoBehaviour
     {
         string playerName = text;
 
-        playerName.Trim();
+        playerName = playerName.Trim();
 
         while (playerName.Length > ContinuousController.instance.PlayerNameMaxLength)
         {

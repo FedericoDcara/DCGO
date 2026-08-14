@@ -25,6 +25,11 @@ public class SoundObject : MonoBehaviour
 
     private void Update()
     {
+        if (_audio == null)
+        {
+            return;
+        }
+
         if (ContinuousController.instance != null)
         {
             ContinuousController.instance.ChangeSEVolume(_audio);

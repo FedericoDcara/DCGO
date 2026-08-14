@@ -15,30 +15,34 @@ public class CPlayerElement : MonoBehaviour
     //Function to set Room information from GetRoomList to RoomElement
     public void SetPlayerInfo(string _PlayerName, bool _IsReady)
     {
-        //Obtain roomname for room entry button
-        playername = _PlayerName;
-        PlayerName.text = _PlayerName;
-
         if (_IsReady)
         {
-            IsReady.text = LocalizeUtility.
-            GetLocalizedString(
-                EngMessage: "Ready",
-                JpnMessage: "準備完了"
-            );
-
-            IsReady.color = new Color32(53, 255, 4, 255);
+            SetPlayerInfo(
+                _PlayerName,
+                LocalizeUtility.GetLocalizedString(EngMessage: "Ready", JpnMessage: "準備完了"),
+                new Color32(53, 255, 4, 255));
         }
-
         else
         {
-            IsReady.text = LocalizeUtility.
-            GetLocalizedString(
-                EngMessage: "Not Ready",
-                JpnMessage: "準備中"
-            );
+            SetPlayerInfo(
+                _PlayerName,
+                LocalizeUtility.GetLocalizedString(EngMessage: "Not Ready", JpnMessage: "準備中"),
+                Color.red);
+        }
+    }
 
-            IsReady.color = Color.red;
+    public void SetPlayerInfo(string _PlayerName, string statusText, Color statusColor)
+    {
+        playername = _PlayerName;
+        if (PlayerName != null)
+        {
+            PlayerName.text = _PlayerName;
+        }
+
+        if (IsReady != null)
+        {
+            IsReady.text = statusText;
+            IsReady.color = statusColor;
         }
     }
 }

@@ -1002,20 +1002,27 @@ namespace Photon.Pun
             bool isViewListed = photonViewList.TryGetValue(netView.ViewID, out listedView);
             if (isViewListed)
             {
-                // if some other view is in the list already, we got a problem. it might be indestructible. print out error
-                if (netView != listedView)
-                {
-                    Debug.LogError(string.Format("PhotonView ID duplicate found: {0}. New: {1} old: {2}. Maybe one wasn't destroyed on scene load?! Check for 'DontDestroyOnLoad'. Destroying old entry, adding new.", netView.ViewID, netView, listedView));
-                }
-                else
+                if (netView == listedView)
                 {
                     return;
                 }
 
-                RemoveInstantiatedGO(listedView.gameObject, true);
+                // Additive reload of the same scene (tournament Bo3 rematch) leaves the old
+                // scene view in this list. RemoveInstantiatedGO does not LocalClean scene views
+                // (InstantiationId == 0), so Add() used to throw Duplicate key and the NEW
+                // GManager never received RPCs (mulligan / surrender freeze).
+                photonViewList.Remove(netView.ViewID);
+                if (listedView != null)
+                {
+                    listedView.removedFromLocalViewList = true;
+                    if (listedView.gameObject != null)
+                    {
+                        RemoveInstantiatedGO(listedView.gameObject, true);
+                    }
+                }
             }
 
-            // Debug.Log("adding view to known list: " + netView);
+            photonViewList.Remove(netView.ViewID);
             photonViewList.Add(netView.ViewID, netView);
             netView.removedFromLocalViewList = false;
 
@@ -1485,6 +1492,15 @@ namespace Photon.Pun
                 PhotonView view = kvp.Value;
                 if (view == null)
                 {
+                    removeKeys.Add(kvp.Key);
+                    continue;
+                }
+
+                // UnloadSceneAsync (additive battle rematch) does not fire this callback.
+                // Drop views whose scene is already gone so the next BattleScene can register.
+                if (view.gameObject == null || !view.gameObject.scene.isLoaded)
+                {
+                    view.removedFromLocalViewList = true;
                     removeKeys.Add(kvp.Key);
                 }
             }
