@@ -34,6 +34,9 @@ public class BGMObject : MonoBehaviour
             _audio.clip = clip;
         }
 
+        // Lower number = higher priority; keep BGM above SE pool (priority ~200).
+        _audio.priority = 32;
+
         if (ContinuousController.instance != null)
         {
             ContinuousController.instance.ChangeBGMVolume(_audio);
@@ -72,6 +75,7 @@ public class BGMObject : MonoBehaviour
 
         yield return new WaitWhile(() => !end);
 
+        _audio.Stop();
         isPlaying = false;
         isFading = false;
     }

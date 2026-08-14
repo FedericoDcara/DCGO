@@ -132,14 +132,11 @@ public class CardObjectController : MonoBehaviour
             #region 対人戦
             if (!GManager.instance.IsAI)
             {
-                Hashtable hashtable = player.CustomProperties;
-
                 if (HasDeckRecipie(player))
                 {
-                    if (hashtable.TryGetValue(ContinuousController.DeckDataPropertyKey, out object value))
+                    DeckData deckData = ResolveOnlineDeckData(player);
+                    if (deckData != null)
                     {
-                        DeckData deckData = new DeckData((string)value);
-
                         return RandomUtility.ShuffledDeckCards(deckData.DeckCards());
                     }
                 }
@@ -218,14 +215,11 @@ public class CardObjectController : MonoBehaviour
             #region 対人戦
             if (!GManager.instance.IsAI)
             {
-                Hashtable hashtable = player.CustomProperties;
-
                 if (HasDeckRecipie(player))
                 {
-                    if (hashtable.TryGetValue(ContinuousController.DeckDataPropertyKey, out object value))
+                    DeckData deckData = ResolveOnlineDeckData(player);
+                    if (deckData != null)
                     {
-                        DeckData deckData = new DeckData((string)value);
-
                         return RandomUtility.ShuffledDeckCards(deckData.DigitamaDeckCards());
                     }
                 }
@@ -300,19 +294,59 @@ public class CardObjectController : MonoBehaviour
         #region そのPhotonクライアントがデッキレシピのキーを持っているかの判定
         bool HasDeckRecipie(Photon.Realtime.Player _player)
         {
-            Hashtable _hashtable = _player.CustomProperties;
+            DeckData deckData = ResolveOnlineDeckData(_player);
+            return deckData != null && deckData.IsValidDeckData();
+        }
 
-            if (_hashtable.TryGetValue(ContinuousController.DeckDataPropertyKey, out object value))
+        DeckData ResolveOnlineDeckData(Photon.Realtime.Player _player)
+        {
+            var cc = ContinuousController.instance;
+            if (cc != null && cc.isTournamentStarted)
             {
-                DeckData deckData = new DeckData((string)value);
-
-                if (deckData.IsValidDeckData())
+                string userId = TournamentState.ReadPlayerId(_player);
+                string locked = cc.TournamentState != null ? cc.TournamentState.LockedDeckCode(userId) : null;
+                if (string.IsNullOrEmpty(locked) &&
+                    _player.CustomProperties != null &&
+                    _player.CustomProperties.TryGetValue(TournamentKeys.LockedDeckProperty, out object lockedObj) &&
+                    lockedObj is string lockedProp)
                 {
-                    return true;
+                    locked = lockedProp;
+                }
+
+                if (!string.IsNullOrEmpty(locked))
+                {
+                    try
+                    {
+                        var lockedDeck = new DeckData(locked);
+                        if (lockedDeck.IsValidDeckData())
+                        {
+                            return lockedDeck;
+                        }
+                    }
+                    catch
+                    {
+                    }
                 }
             }
 
-            return false;
+            Hashtable _hashtable = _player.CustomProperties;
+            if (_hashtable != null && _hashtable.TryGetValue(ContinuousController.DeckDataPropertyKey, out object value) &&
+                value is string code)
+            {
+                try
+                {
+                    var deckData = new DeckData(code);
+                    if (deckData.IsValidDeckData())
+                    {
+                        return deckData;
+                    }
+                }
+                catch
+                {
+                }
+            }
+
+            return null;
         }
         #endregion
 

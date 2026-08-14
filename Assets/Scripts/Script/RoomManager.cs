@@ -420,6 +420,12 @@ public class RoomManager : MonoBehaviourPunCallbacks
     bool DoneStartBattle;
     public void CheckPlayerState()
     {
+        if (ContinuousController.instance != null && ContinuousController.instance.isTournament)
+        {
+            // Tournament rooms are driven by TournamentMatchDirector.
+            return;
+        }
+
         if (PhotonNetwork.InRoom && endSetUp)
         {
             if (PhotonNetwork.CurrentRoom.PlayerCount == PhotonNetwork.CurrentRoom.MaxPlayers && AllPlayerIsReady())
@@ -496,6 +502,11 @@ public class RoomManager : MonoBehaviourPunCallbacks
 
     IEnumerator GoToBattleSceneCoroutine()
     {
+        if (ContinuousController.instance.isTournament || ContinuousController.IsBattleSceneLoaded())
+        {
+            yield break;
+        }
+
         yield return ContinuousController.instance.StartCoroutine(Opening.instance.LoadingObject_Unload.StartLoading("Now Loading"));
 
         DoneStartBattle = true;

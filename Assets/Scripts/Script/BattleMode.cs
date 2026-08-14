@@ -16,8 +16,14 @@ public class BattleMode : MonoBehaviour
     [Header("RandomMatch")]
     public LobbyManager_RandomMatch lobbyManager_RandomMatch;
 
+    [Header("RankedMatch")]
+    public LobbyManager_RankedMatch lobbyManager_RankedMatch;
+
     [Header("Room Screen")]
     public RoomManager roomManager;
+
+    [Header("Tournament")]
+    public TournamentLobbyManager tournamentLobbyManager;
 
     bool first = false;
 
@@ -25,11 +31,18 @@ public class BattleMode : MonoBehaviour
     {
         roomManager.Off();
 
+        tournamentLobbyManager?.Off();
+
         selectBattleDeck.Off();
 
         selectBattleMode.OffSelectBattleMode();
 
         lobbyManager_RandomMatch.OffLobby();
+
+        if (lobbyManager_RankedMatch != null)
+        {
+            lobbyManager_RankedMatch.OffLobby();
+        }
 
         if (!first)
         {

@@ -290,8 +290,8 @@ public class SelectCardPanel : MonoBehaviour
             eventTrigger.triggers.Add(entry);
             AddHandCardLongPressTriggers(eventTrigger, handCard);
 
-            // Long-press inspect uses HandCard.OnRightClicked; allow face-down when panel permits it.
-            handCard.ShowOpponent = CanLookReverseCard;
+            // Allow face-down inspect without ShowOpponent (that path refreshes sprites and hides labels).
+            handCard.AllowFaceDownInspect = CanLookReverseCard;
 
             handCard.SetUpHandCard(cardSource);
 
@@ -365,7 +365,7 @@ public class SelectCardPanel : MonoBehaviour
                 {
                     if (skillInfos[index] != null)
                     {
-                        if (!string.IsNullOrEmpty(skillInfos[index].CardEffect.EffectName))
+                        if (skillInfos[index].CardEffect != null)
                         {
                             handCard.SetSkillName(skillInfos[index].CardEffect);
                             handCard.SetUpCardPositionText(permanents);

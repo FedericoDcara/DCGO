@@ -89,6 +89,9 @@ public class GManager : MonoBehaviourPun
     [Header("プレイログ")]
     public PlayLog playLog;
 
+    [Header("バトルチャット")]
+    public BattleChatPanel battleChat;
+
     [Header("メモリー")]
     public MemoryObject memoryObject;
 
@@ -275,6 +278,8 @@ public class GManager : MonoBehaviourPun
 
         playLog.Init();
 
+        EnsureBattleChat();
+
         hideCannotSelectObject.Init();
 
         ChangeBackground();
@@ -315,6 +320,44 @@ public class GManager : MonoBehaviourPun
         ContinuousController.instance.PlaySE(CancelSE);
     }
 
+    void EnsureBattleChat()
+    {
+        bool enableChat = ContinuousController.instance != null
+            && !ContinuousController.instance.isAI
+            && !IsAI
+            && PhotonNetwork.InRoom;
+
+        if (!enableChat)
+        {
+            if (battleChat != null)
+            {
+                battleChat.Clear();
+                battleChat.OffChat(playSe: false);
+                battleChat.gameObject.SetActive(false);
+            }
+            return;
+        }
+
+        if (battleChat == null)
+        {
+            BattleChatPanel prefab = Resources.Load<BattleChatPanel>("BattleChatPanel");
+            if (prefab != null && canvas != null)
+            {
+                battleChat = Instantiate(prefab, canvas.transform);
+            }
+            else if (canvas != null)
+            {
+                GameObject go = new GameObject("BattleChatPanel", typeof(RectTransform));
+                go.layer = 5;
+                go.transform.SetParent(canvas.transform, false);
+                battleChat = go.AddComponent<BattleChatPanel>();
+            }
+        }
+
+        if (battleChat != null)
+            battleChat.Init();
+    }
+
     public async void ChangeBackground()
     {
         Sprite backgroundSprite = await StreamingAssetsUtility.GetSprite("Background_battle");
@@ -345,40 +388,27 @@ public class GManager : MonoBehaviourPun
 
         yield return new WaitWhile(() => turnStateMachine == null);
 
-        yield return _waitForSeconds5;
+        yield return new WaitForSecondsRealtime(2f);
 
         while (true)
         {
-            if (!PhotonNetwork.IsConnected)
+            if (!PhotonNetwork.IsConnected || !PhotonNetwork.InRoom)
             {
                 break;
             }
 
-            else
+            if (PhotonNetwork.CurrentRoom != null && PhotonNetwork.PlayerList.Length < 2)
             {
-                if (!PhotonNetwork.InRoom)
-                {
-                    break;
-                }
-
-                else
-                {
-                    if (PhotonNetwork.CurrentRoom != null)
-                    {
-                        if (PhotonNetwork.PlayerList.Length < 2)
-                        {
-                            break;
-                        }
-                    }
-                }
+                break;
             }
 
             yield return null;
         }
 
-        if (!turnStateMachine.endGame)
+        if (turnStateMachine != null && !turnStateMachine.endGame)
         {
-            turnStateMachine.EndGame(null, false);
+            bool weDisconnected = !PhotonNetwork.IsConnected || !PhotonNetwork.InRoom;
+            turnStateMachine.EndGame(weDisconnected ? null : You, false);
         }
     }
 
@@ -540,7 +570,11 @@ public class GManager : MonoBehaviourPun
     #region Cheats
     public bool AllowCheats()
     {
-        return !ContinuousController.instance.isRandomMatch || ContinuousController.instance.isAI;
+        // Disable cheats in any online competitive mode
+        return ContinuousController.instance.isAI ||
+               (!ContinuousController.instance.isRandomMatch &&
+                !ContinuousController.instance.isRanked &&
+                !ContinuousController.instance.isTournament);
     }
 
     void AllowAlphaInputs()

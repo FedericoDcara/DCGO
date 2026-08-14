@@ -5,6 +5,9 @@ using UnityEngine.UI;
 
 public class OpeningButton : MonoBehaviour
 {
+    const float TitleButtonSECooldown = 0.08f;
+    static float _lastTitleButtonSETime = float.NegativeInfinity;
+
     [Header("Button Animator")]
     public Animator ButtonAnimator;
 
@@ -16,7 +19,17 @@ public class OpeningButton : MonoBehaviour
         {
             selectedObject.SetActive(true);
 
-            ContinuousController.instance.PlaySE(Opening.instance.TitleButtonSE);
+            if (ContinuousController.instance == null || Opening.instance == null)
+            {
+                return;
+            }
+
+            float now = Time.unscaledTime;
+            if (now - _lastTitleButtonSETime >= TitleButtonSECooldown)
+            {
+                _lastTitleButtonSETime = now;
+                ContinuousController.instance.PlaySE(Opening.instance.TitleButtonSE);
+            }
         }
     }
 

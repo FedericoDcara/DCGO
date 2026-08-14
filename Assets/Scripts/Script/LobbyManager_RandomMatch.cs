@@ -61,6 +61,7 @@ public class LobbyManager_RandomMatch : MonoBehaviourPunCallbacks
 
         ContinuousController.instance.isAI = false;
         ContinuousController.instance.isRandomMatch = true;
+        ContinuousController.instance.isRanked = false;
         this.gameObject.SetActive(true);
         //this.battleRule = battleRule;
         ContinuousController.instance.StartCoroutine(ConnectCoroutine());
@@ -243,6 +244,12 @@ public class LobbyManager_RandomMatch : MonoBehaviourPunCallbacks
     bool n;
     public override void OnRoomListUpdate(List<RoomInfo> roomList)
     {
+        // Ranked reuses this panel — do not bounce the Photon lobby while ranked is searching
+        if (ContinuousController.instance != null && ContinuousController.instance.isRanked)
+        {
+            return;
+        }
+
         if (this.gameObject.activeSelf)
         {
             if (!PhotonNetwork.InRoom && PhotonNetwork.InLobby && !m)
@@ -299,6 +306,11 @@ public class LobbyManager_RandomMatch : MonoBehaviourPunCallbacks
     #region Callback when leaving the lobby
     public override void OnLeftLobby()
     {
+        if (ContinuousController.instance != null && ContinuousController.instance.isRanked)
+        {
+            return;
+        }
+
         if (this.gameObject.activeSelf)
         {
             if (m)
@@ -314,6 +326,11 @@ public class LobbyManager_RandomMatch : MonoBehaviourPunCallbacks
     #region Callback when joining a room fails
     public override void OnJoinRoomFailed(short returnCode, string message)
     {
+        if (ContinuousController.instance != null && ContinuousController.instance.isRanked)
+        {
+            return;
+        }
+
         if (this.gameObject.activeSelf && !DoneCompleteMatching)
         {
             Debug.Log($"[RandomMatch] Join room failed: [{returnCode}] {message}, retrying...");
@@ -476,6 +493,12 @@ public class LobbyManager_RandomMatch : MonoBehaviourPunCallbacks
     }
     private void LateUpdate()
     {
+        // Ranked reuses this UI host; do not run casual transition during ranked queue
+        if (ContinuousController.instance != null && ContinuousController.instance.isRanked)
+        {
+            return;
+        }
+
         if (PhotonNetwork.InRoom)
         {
             if (PhotonNetwork.CurrentRoom.PlayerCount == PhotonNetwork.CurrentRoom.MaxPlayers)
