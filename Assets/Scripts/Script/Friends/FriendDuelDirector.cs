@@ -29,6 +29,7 @@ public class FriendDuelDirector : MonoBehaviour
     Coroutine _autoAdvanceFromResult;
     bool _autoAdvancingResult;
     bool _startingBattle;
+    bool _startedBattleOk;
 
     public void ResetDirector()
     {
@@ -49,14 +50,27 @@ public class FriendDuelDirector : MonoBehaviour
     public void BeginSeriesFromRoom()
     {
         SyncFromRoom();
+        var cc = ContinuousController.instance;
+        if (cc != null && cc.FriendWinsToTake > WinsToTake)
+        {
+            WinsToTake = cc.FriendWinsToTake;
+        }
+
         if (WinsToTake < 1)
         {
             WinsToTake = 1;
         }
 
+        if (cc != null)
+        {
+            cc.isFriendDuel = true;
+            cc.FriendWinsToTake = WinsToTake;
+        }
+
         EnsureSides();
         PublishRoomProps();
         AttachSeriesOverlayWhenReady();
+        FriendServices.Instance?.Duel?.NotifySeriesRoom(PhotonNetwork.CurrentRoom?.Name);
     }
 
     public void SyncFromRoom()
@@ -176,8 +190,20 @@ public class FriendDuelDirector : MonoBehaviour
         SyncFromRoom();
         EnsureSides();
 
+        var cc = ContinuousController.instance;
+        if (cc != null && cc.FriendWinsToTake > WinsToTake)
+        {
+            WinsToTake = cc.FriendWinsToTake;
+        }
+
+        if (WinsToTake < 1)
+        {
+            WinsToTake = 1;
+        }
+
         string localId = FriendListService.LocalPlayFabId() ?? PhotonNetwork.LocalPlayer?.UserId;
         ShouldReloadNextGame = false;
+        FriendServices.Instance?.Duel?.SetInviteListening(false);
 
         if (PhotonNetwork.InRoom && BattleReconnectService.CountActivePlayers() < 2)
         {
@@ -192,7 +218,7 @@ public class FriendDuelDirector : MonoBehaviour
 
         if (draw)
         {
-            ShouldReloadNextGame = !SeriesComplete;
+            ShouldReloadNextGame = !SeriesComplete && WinsToTake > 1;
             return;
         }
 
@@ -219,16 +245,19 @@ public class FriendDuelDirector : MonoBehaviour
 
         if (string.IsNullOrEmpty(winnerId))
         {
-            ShouldReloadNextGame = !SeriesComplete;
+            ShouldReloadNextGame = !SeriesComplete && WinsToTake > 1;
             return;
         }
 
-        bool alreadyApplied =
-            PhotonNetwork.InRoom &&
-            PhotonNetwork.CurrentRoom.CustomProperties.TryGetValue(FriendKeys.GameIndexProperty, out object gObj) &&
-            System.Convert.ToInt32(gObj) > GameIndex;
+        int roomGameIndex = GameIndex;
+        if (PhotonNetwork.InRoom &&
+            PhotonNetwork.CurrentRoom.CustomProperties.TryGetValue(FriendKeys.GameIndexProperty, out object gObj))
+        {
+            roomGameIndex = System.Convert.ToInt32(gObj);
+        }
 
-        if (!alreadyApplied)
+        bool alreadyApplied = roomGameIndex > GameIndex;
+        if (!alreadyApplied && PhotonNetwork.IsMasterClient)
         {
             ApplyGameResult(winnerId);
         }
@@ -237,7 +266,8 @@ public class FriendDuelDirector : MonoBehaviour
             SyncFromRoom();
         }
 
-        ShouldReloadNextGame = !SeriesComplete;
+        ShouldReloadNextGame = !SeriesComplete && WinsToTake > 1 &&
+            SeriesWinsA < WinsToTake && SeriesWinsB < WinsToTake;
         RefreshSeriesOverlay();
 
         if (SeriesComplete && WinnerUserId == localId)
@@ -249,7 +279,7 @@ public class FriendDuelDirector : MonoBehaviour
 
     void ApplyGameResult(string winnerId)
     {
-        bool winnerIsA = winnerId == UserIdA;
+        bool winnerIsA = string.Equals(winnerId, UserIdA, System.StringComparison.OrdinalIgnoreCase);
         if (winnerIsA)
         {
             SeriesWinsA++;
@@ -263,7 +293,12 @@ public class FriendDuelDirector : MonoBehaviour
 
         GameIndex++;
 
-        if (SeriesWinsA >= WinsToTake || SeriesWinsB >= WinsToTake)
+        if (WinsToTake > 1 &&
+            (SeriesWinsA >= WinsToTake || SeriesWinsB >= WinsToTake))
+        {
+            CompleteSeries(winnerId);
+        }
+        else if (WinsToTake <= 1)
         {
             CompleteSeries(winnerId);
         }
@@ -365,10 +400,23 @@ public class FriendDuelDirector : MonoBehaviour
         _autoAdvanceFromResult = null;
         _autoAdvancingResult = false;
 
-        if (ContinuousController.instance == null)
+        // Re-read room props after both clients have been on the result screen.
+        SyncFromRoom();
+        var cc = ContinuousController.instance;
+        if (cc != null && cc.FriendWinsToTake > WinsToTake)
+        {
+            WinsToTake = cc.FriendWinsToTake;
+        }
+
+        ShouldReloadNextGame = !SeriesComplete && WinsToTake > 1 &&
+            SeriesWinsA < WinsToTake && SeriesWinsB < WinsToTake;
+
+        if (cc == null)
         {
             yield break;
         }
+
+        Debug.Log($"[Friends] Auto-advance rematch={ShouldReloadNextGame} score={SeriesWinsA}-{SeriesWinsB} winsToTake={WinsToTake}");
 
         if (GManager.instance != null)
         {
@@ -419,6 +467,14 @@ public class FriendDuelDirector : MonoBehaviour
     public IEnumerator StartNextGameCoroutine()
     {
         ShouldReloadNextGame = false;
+        FriendServices.Instance?.Duel?.SetInviteListening(false);
+        FriendServices.Instance?.Duel?.DestroyInviteOverlayPublic();
+        Opening.instance?.battle?.roomManager?.Off();
+
+        if (Opening.instance != null)
+        {
+            Opening.instance.openingObject.SetActive(false);
+        }
 
         float wait = 0f;
         float reconnectWait = BattleReconnectService.PlayerTtlMs / 1000f;
@@ -430,22 +486,48 @@ public class FriendDuelDirector : MonoBehaviour
 
         if (!PhotonNetwork.InRoom || BattleReconnectService.CountActivePlayers() < 2)
         {
+            _startingBattle = false;
             yield return EndSeriesToHomeCoroutine();
             yield break;
         }
 
         yield return StartBattleCoroutine(isRematch: true);
+        if (!_startedBattleOk)
+        {
+            yield return EndSeriesToHomeCoroutine();
+        }
     }
 
     public IEnumerator EndSeriesToHomeCoroutine()
     {
         CancelAutoAdvanceFromResult();
         DestroyOverlay();
+        FriendServices.Instance?.Duel?.RememberEndedSeriesRoom(PhotonNetwork.CurrentRoom?.Name);
+        FriendServices.Instance?.Duel?.SetInviteListening(false);
+        FriendServices.Instance?.Duel?.DestroyInviteOverlayPublic();
+
+        Opening.instance?.battle?.roomManager?.Off();
+        RestoreOpeningCameras();
+
+        // Must fully leave (not become inactive) so the opponent is not left waiting
+        // on a dead Room Match lobby where CountActivePlayers never reaches MaxPlayers.
+        PhotonUtility.LeaveRoomImmediate();
+        float leftWait = 0f;
+        while (PhotonNetwork.InRoom && leftWait < 8f)
+        {
+            leftWait += Time.unscaledDeltaTime;
+            yield return null;
+        }
 
         if (PhotonNetwork.InRoom)
         {
-            PhotonNetwork.LeaveRoom();
-            yield return new WaitWhile(() => PhotonNetwork.InRoom);
+            PhotonUtility.DisconnectImmediate();
+            float discWait = 0f;
+            while (PhotonNetwork.IsConnected && discWait < 8f)
+            {
+                discWait += Time.unscaledDeltaTime;
+                yield return null;
+            }
         }
 
         if (ContinuousController.instance != null)
@@ -455,9 +537,36 @@ public class FriendDuelDirector : MonoBehaviour
 
         OnlinePlayerCountService.EnsureExists().SetMatchmakingOwnsConnection(false);
 
-        if (Opening.instance != null && Opening.instance.home != null)
+        if (Opening.instance != null)
         {
-            Opening.instance.home.SetUpHomeMode_Disconnect();
+            Opening.instance.openingObject.SetActive(true);
+            RestoreOpeningCameras();
+            if (Opening.instance.home != null)
+            {
+                yield return Opening.instance.home.SetUpHomeMode_DisconnectCoroutine();
+            }
+        }
+    }
+
+    static void RestoreOpeningCameras()
+    {
+        if (Opening.instance == null)
+        {
+            return;
+        }
+
+        Opening.instance.openingObject.SetActive(true);
+        if (Opening.instance.openingCameras == null)
+        {
+            return;
+        }
+
+        foreach (Camera camera in Opening.instance.openingCameras)
+        {
+            if (camera != null)
+            {
+                camera.gameObject.SetActive(true);
+            }
         }
     }
 
@@ -469,6 +578,7 @@ public class FriendDuelDirector : MonoBehaviour
         }
 
         _startingBattle = true;
+        _startedBattleOk = false;
 
         if (ContinuousController.IsBattleSceneLoaded())
         {
@@ -529,6 +639,12 @@ public class FriendDuelDirector : MonoBehaviour
         }
 
         SceneManager.LoadSceneAsync("BattleScene", LoadSceneMode.Additive);
+        if (Opening.instance != null)
+        {
+            Opening.instance.openingObject.SetActive(false);
+        }
+
+        _startedBattleOk = true;
         _startingBattle = false;
         AttachSeriesOverlayWhenReady();
     }

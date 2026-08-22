@@ -449,6 +449,14 @@ public class GManager : MonoBehaviourPun
     {
         yield return StartCoroutine(LoadingObject.StartLoading("Now Loading"));
 
+        // === DCGO-CUSTOM:friends begin ===
+        if (FriendKeys.IsInFriendDuelRoom() && ContinuousController.instance != null)
+        {
+            ContinuousController.instance.isFriendDuel = true;
+            FriendServices.EnsureExists().Director.BeginSeriesFromRoom();
+        }
+        // === DCGO-CUSTOM:friends end ===
+
         selectCommandPanel.Off();
 
         BackButton.CloseSelectCommandButton();

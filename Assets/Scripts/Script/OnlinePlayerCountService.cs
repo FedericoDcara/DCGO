@@ -36,6 +36,9 @@ public class OnlinePlayerCountService : MonoBehaviour, IOnEventCallback, ILobbyC
     Coroutine _presenceCoroutine;
     readonly Dictionary<string, RoomInfo> _lobbyRooms = new Dictionary<string, RoomInfo>();
 
+    /// <summary>Snapshot of visible lobby rooms (for friend-invite scanning).</summary>
+    public IReadOnlyDictionary<string, RoomInfo> LobbyRooms => _lobbyRooms;
+
     public static OnlinePlayerCountService EnsureExists()
     {
         if (Instance != null)
