@@ -149,6 +149,9 @@ public class RoomManager : MonoBehaviourPunCallbacks
                     "UseBanlist"
                 }
             };
+            // === DCGO-CUSTOM:reconnect begin ===
+            BattleReconnectService.ApplyBattleTtl(roomOptions);
+            // === DCGO-CUSTOM:reconnect end ===
 
             string RoomName = StringUtils.GeneratePassword_Num(5);
 
@@ -314,7 +317,9 @@ public class RoomManager : MonoBehaviourPunCallbacks
         #region Leave Room
         if (PhotonNetwork.InRoom)
         {
-            PhotonNetwork.LeaveRoom();
+            // === DCGO-CUSTOM:reconnect begin ===
+            PhotonUtility.LeaveRoomImmediate();
+            // === DCGO-CUSTOM:reconnect end ===
         }
 
         yield return new WaitWhile(() => PhotonNetwork.InRoom);
@@ -420,15 +425,30 @@ public class RoomManager : MonoBehaviourPunCallbacks
     bool DoneStartBattle;
     public void CheckPlayerState()
     {
+        // === DCGO-CUSTOM:tournament begin ===
         if (ContinuousController.instance != null && ContinuousController.instance.isTournament)
         {
             // Tournament rooms are driven by TournamentMatchDirector.
             return;
         }
+        // === DCGO-CUSTOM:tournament end ===
+        // === DCGO-CUSTOM:friends begin ===
+        if (ContinuousController.instance != null &&
+            ContinuousController.instance.isFriendDuel &&
+            FriendServices.Instance != null &&
+            FriendServices.Instance.Director != null &&
+            FriendServices.Instance.Director.GameIndex > 0)
+        {
+            // Mid-series rematch is started by FriendDuelDirector, not ready checks.
+            return;
+        }
+        // === DCGO-CUSTOM:friends end ===
 
         if (PhotonNetwork.InRoom && endSetUp)
         {
-            if (PhotonNetwork.CurrentRoom.PlayerCount == PhotonNetwork.CurrentRoom.MaxPlayers && AllPlayerIsReady())
+            // === DCGO-CUSTOM:reconnect begin ===
+            if (BattleReconnectService.CountActivePlayers() == PhotonNetwork.CurrentRoom.MaxPlayers && AllPlayerIsReady())
+            // === DCGO-CUSTOM:reconnect end ===
             {
                 if (PhotonNetwork.IsMasterClient && !DoneStartBattle)
                 {
@@ -502,10 +522,23 @@ public class RoomManager : MonoBehaviourPunCallbacks
 
     IEnumerator GoToBattleSceneCoroutine()
     {
+        // === DCGO-CUSTOM:tournament begin ===
         if (ContinuousController.instance.isTournament || ContinuousController.IsBattleSceneLoaded())
         {
             yield break;
         }
+        // === DCGO-CUSTOM:tournament end ===
+        // === DCGO-CUSTOM:friends begin ===
+        if (ContinuousController.instance.isFriendDuel && ContinuousController.IsBattleSceneLoaded())
+        {
+            yield break;
+        }
+
+        if (ContinuousController.instance.isFriendDuel)
+        {
+            FriendServices.EnsureExists().Director.BeginSeriesFromRoom();
+        }
+        // === DCGO-CUSTOM:friends end ===
 
         yield return ContinuousController.instance.StartCoroutine(Opening.instance.LoadingObject_Unload.StartLoading("Now Loading"));
 

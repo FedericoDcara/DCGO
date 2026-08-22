@@ -20,8 +20,10 @@ public class EnterRoom : MonoBehaviourPunCallbacks
     [Header("Enter Room Button")]
     public Button EnterRoomButton;
 
+    // === DCGO-CUSTOM:tournament begin ===
     [System.NonSerialized]
     public bool JoinTournament;
+    // === DCGO-CUSTOM:tournament end ===
 
     Image _enterRoomButtonImage;
     bool _canClick = true;
@@ -95,10 +97,12 @@ public class EnterRoom : MonoBehaviourPunCallbacks
 
         string id = RoomIDInputField.text != null ? RoomIDInputField.text.Trim() : "";
 
+        // === DCGO-CUSTOM:tournament begin ===
         if (JoinTournament)
         {
             yield return JoinTournamentLobbyCoroutine(id);
         }
+        // === DCGO-CUSTOM:tournament end ===
         else
         {
             string suffix = id + "-" + ContinuousController.instance.useBanlist;
@@ -122,6 +126,7 @@ public class EnterRoom : MonoBehaviourPunCallbacks
         _canClick = true;
     }
 
+    // === DCGO-CUSTOM:tournament begin ===
     IEnumerator JoinTournamentLobbyCoroutine(string tourneyId)
     {
         bool preferBanlist = ContinuousController.instance.useBanlist;
@@ -186,6 +191,7 @@ public class EnterRoom : MonoBehaviourPunCallbacks
             ContinuousController.instance.useBanlist = ban;
         }
     }
+    // === DCGO-CUSTOM:tournament end ===
 
     void ShowRoomNotFoundDialog()
     {
@@ -194,12 +200,14 @@ public class EnterRoom : MonoBehaviourPunCallbacks
             new List<UnityAction>() { null },
             new List<string>() { "OK" },
             LocalizeUtility.GetLocalizedString(
+                // === DCGO-CUSTOM:tournament begin ===
                 EngMessage: JoinTournament
                     ? "Error!\nTournament room not found.\nCheck the Room ID (host must still be in the lobby)."
                     : "Error!\nThe room could not be found.",
                 JpnMessage: JoinTournament
                     ? "エラー!\nトーナメントルームが見つかりません。\nルームIDを確認してください（ホストがロビーにいる必要があります）。"
                     : "エラー!\nルームが見つかりませんでした"
+                // === DCGO-CUSTOM:tournament end ===
             ),
             true);
     }
@@ -214,6 +222,7 @@ public class EnterRoom : MonoBehaviourPunCallbacks
         _expectingJoin = false;
         ContinuousController.instance.isAI = false;
         ContinuousController.instance.isRandomMatch = false;
+        // === DCGO-CUSTOM:tournament begin ===
         if (JoinTournament)
         {
             SyncBanlistFromJoinedRoom();
@@ -225,6 +234,7 @@ public class EnterRoom : MonoBehaviourPunCallbacks
         }
 
         ContinuousController.instance.isTournament = false;
+        // === DCGO-CUSTOM:tournament end ===
         roomManager.SetUpRoom();
         Close_(false);
     }
@@ -239,12 +249,14 @@ public class EnterRoom : MonoBehaviourPunCallbacks
         _joinAttemptFailed = true;
         Debug.Log($"{returnCode} - {message}");
 
+        // === DCGO-CUSTOM:tournament begin ===
         // Tournament join retries other room-name candidates in the coroutine.
         // Casual room match: show dialog when the wait loop notices the failure.
         if (!JoinTournament)
         {
             // Dialog is shown by JoinRoomCoroutine after the wait loop.
         }
+        // === DCGO-CUSTOM:tournament end ===
     }
 
     bool CanClickEnterRoomButton()

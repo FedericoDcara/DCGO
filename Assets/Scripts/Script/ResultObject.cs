@@ -22,7 +22,9 @@ public class ResultObject : MonoBehaviour
 
         if (GManager.instance != null && GManager.instance.battleChat != null)
         {
+            // === DCGO-CUSTOM:chat begin ===
             GManager.instance.battleChat.OffChat(playSe: false);
+            // === DCGO-CUSTOM:chat end ===
             GManager.instance.battleChat.Clear();
         }
 
@@ -41,8 +43,15 @@ public class ResultObject : MonoBehaviour
             ResultText.text = effectName;
         }
 
+        // === DCGO-CUSTOM:ranked begin ===
         bool isRanked = ContinuousController.instance != null && ContinuousController.instance.isRanked;
+        // === DCGO-CUSTOM:ranked end ===
+        // === DCGO-CUSTOM:tournament begin ===
         bool isTournament = ContinuousController.instance != null && ContinuousController.instance.isTournament;
+        // === DCGO-CUSTOM:tournament end ===
+        // === DCGO-CUSTOM:friends begin ===
+        bool isFriendDuel = ContinuousController.instance != null && ContinuousController.instance.isFriendDuel;
+        // === DCGO-CUSTOM:friends end ===
         bool skipRankedReport = false;
 
         if (Winner == GManager.instance.You)
@@ -54,8 +63,8 @@ public class ResultObject : MonoBehaviour
 
             if (!GManager.instance.IsAI)
             {
-                // Casual only — ranked uses PlayFab MMR; tournament counts series wins later
-                if (!isRanked && !isTournament)
+                // Casual only — ranked uses PlayFab MMR; tournament/friend series count wins later
+                if (!isRanked && !isTournament && !isFriendDuel)
                 {
                     ContinuousController.instance.WinCount++;
                     ContinuousController.instance.SaveWinCount();
@@ -118,6 +127,7 @@ public class ResultObject : MonoBehaviour
             }
         }
 
+        // === DCGO-CUSTOM:ranked begin ===
         if (isRanked && !GManager.instance.IsAI && !skipRankedReport)
         {
             // Capture battle-scene state now — ReportRankedOutcome outlives BattleScene unload
@@ -126,7 +136,9 @@ public class ResultObject : MonoBehaviour
             var ranked = RankedServices.EnsureExists();
             ranked.StartCoroutine(ReportRankedOutcome(localWon, disconnect, Surrendered));
         }
+        // === DCGO-CUSTOM:ranked end ===
 
+        // === DCGO-CUSTOM:tournament begin ===
         if (isTournament && !GManager.instance.IsAI)
         {
             bool? localWon = null;
@@ -160,6 +172,48 @@ public class ResultObject : MonoBehaviour
             TournamentServices.EnsureExists().Match.BeginAutoAdvanceFromResult();
             RelabelTournamentReturnButton(match.ShouldReloadNextGame);
         }
+        // === DCGO-CUSTOM:tournament end ===
+
+        // === DCGO-CUSTOM:friends begin ===
+        if (!GManager.instance.IsAI)
+        {
+            RememberLastOpponentFromRoom();
+        }
+
+        if (isFriendDuel && !GManager.instance.IsAI)
+        {
+            bool? localWon = null;
+            if (Winner == GManager.instance.You)
+            {
+                localWon = true;
+            }
+            else if (Winner != null)
+            {
+                localWon = false;
+            }
+
+            bool disconnect = Winner == null && !skipRankedReport;
+            bool draw = Winner == null && skipRankedReport;
+            var director = FriendServices.EnsureExists().Director;
+            director.NotifyGameEnded(localWon, disconnect, draw);
+
+            string seriesLine = director.FormatSeriesStatusLine();
+            if (!string.IsNullOrEmpty(seriesLine))
+            {
+                if (string.IsNullOrEmpty(ResultText.text))
+                {
+                    ResultText.text = seriesLine;
+                }
+                else
+                {
+                    ResultText.text += "\n" + seriesLine;
+                }
+            }
+
+            director.BeginAutoAdvanceFromResult();
+            RelabelTournamentReturnButton(director.ShouldReloadNextGame);
+        }
+        // === DCGO-CUSTOM:friends end ===
 
         PlayLog.OnAddLog?.Invoke(log);
     }
@@ -180,6 +234,46 @@ public class ResultObject : MonoBehaviour
     }
     #endregion
 
+    // === DCGO-CUSTOM:friends begin ===
+    static void RememberLastOpponentFromRoom()
+    {
+        if (!Photon.Pun.PhotonNetwork.InRoom || Photon.Pun.PhotonNetwork.PlayerList == null)
+        {
+            return;
+        }
+
+        string localId = FriendListService.LocalPlayFabId();
+        foreach (var p in Photon.Pun.PhotonNetwork.PlayerList)
+        {
+            if (p == null || p.IsLocal)
+            {
+                continue;
+            }
+
+            string id = FriendDuelDirector.ReadPlayerId(p);
+            string name = p.NickName;
+            if (p.CustomProperties != null &&
+                p.CustomProperties.TryGetValue(ContinuousController.PlayerNameKey, out object nObj) &&
+                nObj is string ns &&
+                !string.IsNullOrEmpty(ns))
+            {
+                name = ns;
+            }
+
+            if (string.IsNullOrEmpty(id) ||
+                (!string.IsNullOrEmpty(localId) &&
+                 string.Equals(id, localId, System.StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+
+            FriendServices.EnsureExists().List.RememberLastOpponent(id, name);
+            break;
+        }
+    }
+    // === DCGO-CUSTOM:friends end ===
+
+    // === DCGO-CUSTOM:tournament begin ===
     static void RelabelTournamentReturnButton(bool nextGame)
     {
         if (GManager.instance == null || GManager.instance.resultObject == null)
@@ -222,7 +316,9 @@ public class ResultObject : MonoBehaviour
                     JpnMessage: "戻っています…");
         }
     }
+    // === DCGO-CUSTOM:tournament end ===
 
+    // === DCGO-CUSTOM:ranked begin ===
     IEnumerator ReportRankedOutcome(bool localWon, bool disconnect, bool surrendered)
     {
         var ranked = RankedServices.EnsureExists();
@@ -363,4 +459,5 @@ public class ResultObject : MonoBehaviour
             ResultText.text += extra;
         }
     }
+    // === DCGO-CUSTOM:ranked end ===
 }

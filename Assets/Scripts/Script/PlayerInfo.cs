@@ -7,8 +7,10 @@ public class PlayerInfo : MonoBehaviour
     public InputField PlayerNameInputField;
     public Text WinCountText;
 
+    // === DCGO-CUSTOM:ranked begin ===
     [Header("Ranked (optional – created at runtime if missing)")]
     public Text RankedStatusText;
+    // === DCGO-CUSTOM:ranked end ===
 
     string _baseWinCountText;
 
@@ -32,12 +34,15 @@ public class PlayerInfo : MonoBehaviour
         this.gameObject.SetActive(true);
         PlayerNameInputField.onEndEdit.AddListener(SavePlayerName);
 
+        // === DCGO-CUSTOM:ranked begin ===
         EnsureRankStatusTextVisible();
         LayoutRankStatusText();
         RefreshRankedStatus();
         LoadRankedProfileAsync();
+        // === DCGO-CUSTOM:ranked end ===
     }
 
+    // === DCGO-CUSTOM:ranked begin ===
     /// <summary>
     /// Home "WinCount" is inactive in Opening, so rank uses a dedicated Text under PlayerInfo.
     /// </summary>
@@ -202,9 +207,13 @@ public class PlayerInfo : MonoBehaviour
         yield return null;
         RefreshRankedStatus();
     }
+    // === DCGO-CUSTOM:ranked end ===
 
     public void OffPlayerInfo()
     {
+        // === DCGO-CUSTOM:recovery begin ===
+        AccountRecoveryPanel.HideIfOpen();
+        // === DCGO-CUSTOM:recovery end ===
         this.gameObject.SetActive(false);
     }
 

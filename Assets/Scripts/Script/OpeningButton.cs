@@ -5,8 +5,10 @@ using UnityEngine.UI;
 
 public class OpeningButton : MonoBehaviour
 {
+    // === DCGO-CUSTOM:android begin ===
     const float TitleButtonSECooldown = 0.08f;
     static float _lastTitleButtonSETime = float.NegativeInfinity;
+    // === DCGO-CUSTOM:android end ===
 
     [Header("Button Animator")]
     public Animator ButtonAnimator;
@@ -24,12 +26,14 @@ public class OpeningButton : MonoBehaviour
                 return;
             }
 
+            // === DCGO-CUSTOM:android begin ===
             float now = Time.unscaledTime;
             if (now - _lastTitleButtonSETime >= TitleButtonSECooldown)
             {
                 _lastTitleButtonSETime = now;
                 ContinuousController.instance.PlaySE(Opening.instance.TitleButtonSE);
             }
+            // === DCGO-CUSTOM:android end ===
         }
     }
 

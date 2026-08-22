@@ -223,7 +223,7 @@ public class LobbyManager_RankedMatch : MonoBehaviourPunCallbacks
 
         if (PhotonNetwork.InRoom)
         {
-            PhotonNetwork.LeaveRoom();
+            PhotonUtility.LeaveRoomImmediate();
         }
 
         yield return new WaitWhile(() => PhotonNetwork.InRoom);
@@ -272,7 +272,7 @@ public class LobbyManager_RankedMatch : MonoBehaviourPunCallbacks
 
         if (PhotonNetwork.IsConnected)
         {
-            PhotonNetwork.Disconnect();
+            PhotonUtility.DisconnectImmediate();
         }
 
         yield return new WaitWhile(() => PhotonNetwork.IsConnected);
@@ -532,7 +532,7 @@ public class LobbyManager_RankedMatch : MonoBehaviourPunCallbacks
         startJoin = false;
         if (PhotonNetwork.InRoom)
         {
-            PhotonNetwork.LeaveRoom();
+            PhotonUtility.LeaveRoomImmediate();
         }
 
         yield return new WaitWhile(() => PhotonNetwork.InRoom);
@@ -591,7 +591,7 @@ public class LobbyManager_RankedMatch : MonoBehaviourPunCallbacks
 
     RoomOptions BuildRoomOptions(int mmrBucket)
     {
-        return new RoomOptions
+        var options = new RoomOptions
         {
             IsVisible = true,
             IsOpen = true,
@@ -612,6 +612,8 @@ public class LobbyManager_RankedMatch : MonoBehaviourPunCallbacks
                 RankedKeys.UseBanlistProperty,
             },
         };
+        BattleReconnectService.ApplyBattleTtl(options);
+        return options;
     }
 
     public override void OnJoinedRoom()
@@ -634,7 +636,7 @@ public class LobbyManager_RankedMatch : MonoBehaviourPunCallbacks
 
         // If we joined an already-full room (join after host had 1 waiting + us)
         if (PhotonNetwork.CurrentRoom != null &&
-            PhotonNetwork.CurrentRoom.PlayerCount >= PhotonNetwork.CurrentRoom.MaxPlayers &&
+            BattleReconnectService.CountActivePlayers() >= PhotonNetwork.CurrentRoom.MaxPlayers &&
             PhotonNetwork.IsMasterClient)
         {
             StartCoroutine(GoNextScene());
@@ -652,7 +654,7 @@ public class LobbyManager_RankedMatch : MonoBehaviourPunCallbacks
 
         if (PhotonNetwork.IsMasterClient &&
             PhotonNetwork.CurrentRoom != null &&
-            PhotonNetwork.CurrentRoom.PlayerCount >= PhotonNetwork.CurrentRoom.MaxPlayers)
+            BattleReconnectService.CountActivePlayers() >= PhotonNetwork.CurrentRoom.MaxPlayers)
         {
             StartCoroutine(GoNextScene());
         }
@@ -759,7 +761,7 @@ public class LobbyManager_RankedMatch : MonoBehaviourPunCallbacks
 
         if (PhotonNetwork.InRoom)
         {
-            if (PhotonNetwork.CurrentRoom.PlayerCount == PhotonNetwork.CurrentRoom.MaxPlayers)
+            if (BattleReconnectService.CountActivePlayers() == PhotonNetwork.CurrentRoom.MaxPlayers)
             {
                 if (PhotonNetwork.IsMasterClient)
                 {

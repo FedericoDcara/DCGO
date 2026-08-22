@@ -211,6 +211,10 @@ public class LobbyManager_FriendMatch : MonoBehaviourPunCallbacks
             "RoomCreator",
         };
 
+        // === DCGO-CUSTOM:reconnect begin ===
+        BattleReconnectService.ApplyBattleTtl(roomOptions);
+        // === DCGO-CUSTOM:reconnect end ===
+
         string RoomName = StringUtils.GeneratePassword(8);
 
         //Create Room

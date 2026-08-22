@@ -114,7 +114,9 @@ public class Draggable_HandCard : Draggable
 
             if (handCard.CanDrag)
             {
+                // === DCGO-CUSTOM:android begin ===
                 handCard.CancelLongPress();
+                // === DCGO-CUSTOM:android end ===
                 base.OnBeginDrag(eventData);
 
                 isExpand = false;

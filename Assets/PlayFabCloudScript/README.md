@@ -8,6 +8,7 @@ In **Game Manager → Settings → API Features**, enable:
 
 - **Allow Login with Custom ID** (client `LoginWithCustomID`)
 - **Allow client to create new users** (or any equivalent “player creation” / “create accounts with Custom ID” option)
+- Custom ID **linking** if listed separately (client `LinkCustomID` — used for wipe recovery codes)
 
 If log shows `PlayerCreationDisabled` / `"Player creations have been disabled for this API"`:
 
@@ -52,22 +53,55 @@ PlayFab login uses `LoginWithCustomID`. The guest CustomId is **stable on the sa
 
 **Survives (typical):** reinstall of the same Android package on the same user/device (Unity `deviceUniqueIdentifier` / app-scoped device id).
 
-**Does not survive:** new phone, factory reset, some OEM privacy/device-id wipes, iOS when all apps from the same vendor are removed (IDFV reset), different Android user profile. Multi-device MMR needs real account linking (Google/Apple/etc.) — not implemented.
+**Does not survive:** new phone, factory reset, some OEM privacy/device-id wipes, iOS when all apps from the same vendor are removed (IDFV reset), different Android user profile.
+
+For those cases use the **recovery code** below (not Google/Apple login).
 
 Offline ranked ids use the same device-stable hash (`offline-v2-...`).
+
+## Friend code vs recovery code
+
+| | Friend code | Recovery code |
+|---|---|---|
+| What it is | Public **PlayFabId** | Private write-down code (`XXXX-XXXX-XXXX`) |
+| Where shown | Friends panel | Home → **Account** |
+| Purpose | Add friends | Restore account after wipe / new phone |
+| Safe to share? | Yes | **No** — anyone with it can take over the account |
+
+After first online login the client links a second PlayFab CustomId (`dcgo-rc-{code}`) to the guest account and stores the display code in private UserData. The player only ever types the short code.
+
+This uses the same **Custom ID** APIs already required for ranked — it does **not** need username/password API Features.
+
+### Wipe / new-phone recovery
+
+1. Before wiping: Home → **Account** → write down / Copy the recovery code.
+2. Reinstall and open home (a new empty guest account is fine).
+3. Home → **Account** → paste code → **Recover** (confirms replace).
+4. Client: `LoginWithCustomID(dcgo-rc-…)` → `LinkCustomID` (ForceLink) for this device’s CustomId → restore display name → refresh ranked + friends.
+
+**Restored:** PlayFabId, ranked MMR/wins/losses, PlayFab friends, nickname.
+
+**Not restored:** local decks, casual win count, volume/language and other PlayerPrefs.
+
+Console success: `[Ranked] Account recovered. playFabId=...` / `[Ranked] Recovery code attached...`
+
+If Account shows `Recovery code: —`, check the Unity console for `LinkCustomID (recovery) failed` and confirm Custom ID login/linking is allowed under API Features.
 
 ## Verify
 
 1. Finish a ranked match.
 2. Console: `[Ranked] Reporting...` then `[Ranked] Stats updated...` (or an error).
 3. Game Manager → that player → `RankedMMR` changed.
-4. Uninstall + reinstall: same PlayFabId and MMR on that device.
+4. Uninstall + reinstall (same device, no factory reset): same PlayFabId and MMR.
+5. Account panel shows a recovery code; Copy works.
+6. (Optional) Clear app data / use another device fingerprint, Recover with the code → same PlayFabId and MMR.
 
 ## Offline
 
 If log shows `offline=true` or console error about offline fallback:
 
 - Only local PlayerPrefs MMR applies — PlayFab Players/stats do **not** update.
+- Recovery codes are **not** attached in offline mode.
 - In-game UI shows **Ranked (Offline): …** (player info + ranked queue) and **Offline rank** on the result screen.
 - Fix: enable Custom ID login, confirm `titleId`, re-enter play mode; success log is `[Ranked] PlayFab login OK`.
 

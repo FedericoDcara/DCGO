@@ -18,7 +18,9 @@ public class BGMObject : MonoBehaviour
     {
         _audio = GetComponent<AudioSource>();
 
+        // === DCGO-CUSTOM:android begin ===
         _audio.Stop();
+        // === DCGO-CUSTOM:android end ===
 
         _audio.clip = null;
 
@@ -34,8 +36,10 @@ public class BGMObject : MonoBehaviour
             _audio.clip = clip;
         }
 
+        // === DCGO-CUSTOM:android begin ===
         // Lower number = higher priority; keep BGM above SE pool (priority ~200).
         _audio.priority = 32;
+        // === DCGO-CUSTOM:android end ===
 
         if (ContinuousController.instance != null)
         {
@@ -75,7 +79,9 @@ public class BGMObject : MonoBehaviour
 
         yield return new WaitWhile(() => !end);
 
+        // === DCGO-CUSTOM:android begin ===
         _audio.Stop();
+        // === DCGO-CUSTOM:android end ===
         isPlaying = false;
         isFading = false;
     }

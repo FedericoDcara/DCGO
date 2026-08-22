@@ -32,7 +32,9 @@ public class SelectBattleMode : MonoBehaviour
     {
         selectRoomMatchWindow.Off();
         enterRoom.Off();
+        // === DCGO-CUSTOM:tournament begin ===
         enterRoom.JoinTournament = false;
+        // === DCGO-CUSTOM:tournament end ===
         Opening.instance.OffYesNoObjects();
     }
 
@@ -69,14 +71,20 @@ public class SelectBattleMode : MonoBehaviour
 
         Opening.instance.battle.selectBattleDeck.Off();
 
-        // Hide leftover matchmaking panels from casual/ranked queue
+        ContinuousController.instance.isRandomMatch = false;
+        // === DCGO-CUSTOM:ranked begin ===
         Opening.instance.battle.lobbyManager_RandomMatch?.OffLobby();
         Opening.instance.battle.lobbyManager_RankedMatch?.OffLobby();
-        Opening.instance.battle.tournamentLobbyManager?.Off();
-
         ContinuousController.instance.isRanked = false;
-        ContinuousController.instance.isRandomMatch = false;
+        // === DCGO-CUSTOM:ranked end ===
+        // === DCGO-CUSTOM:tournament begin ===
+        Opening.instance.battle.tournamentLobbyManager?.Off();
         ContinuousController.instance.ClearTournament();
+        // === DCGO-CUSTOM:tournament end ===
+        // === DCGO-CUSTOM:friends begin ===
+        ContinuousController.instance.ClearFriendDuel();
+        FriendListPanel.HideIfOpen();
+        // === DCGO-CUSTOM:friends end ===
 
         if (PhotonNetwork.IsConnected)
         {
@@ -106,8 +114,9 @@ public class SelectBattleMode : MonoBehaviour
 
                 () =>
                 {
-                    //ランクマッチ
+                    // === DCGO-CUSTOM:ranked begin ===
                     StartSelectBattleDeck(isAI: false, isRanked: true);
+                    // === DCGO-CUSTOM:ranked end ===
                 },
 
                 () =>
@@ -118,8 +127,9 @@ public class SelectBattleMode : MonoBehaviour
 
                 () =>
                 {
-                    //トーナメント
+                    // === DCGO-CUSTOM:tournament begin ===
                     StartSelectTournament();
+                    // === DCGO-CUSTOM:tournament end ===
                 },
 
                 () =>
@@ -135,18 +145,22 @@ public class SelectBattleMode : MonoBehaviour
                     EngMessage:"Random Match",
                     JpnMessage:"ランダムマッチ"
                 ),
+                // === DCGO-CUSTOM:ranked begin ===
                 LocalizeUtility.GetLocalizedString(
                     EngMessage:"Ranked Match",
                     JpnMessage:"ランクマッチ"
                 ),
+                // === DCGO-CUSTOM:ranked end ===
                 LocalizeUtility.GetLocalizedString(
                     EngMessage:"Room Match",
                     JpnMessage:"ルームマッチ"
                 ),
+                // === DCGO-CUSTOM:tournament begin ===
                 LocalizeUtility.GetLocalizedString(
                     EngMessage:"Tournament",
                     JpnMessage:"トーナメント"
                 ),
+                // === DCGO-CUSTOM:tournament end ===
                 LocalizeUtility.GetLocalizedString(
                     EngMessage:"Bot Match",
                     JpnMessage:"Bot戦"
@@ -163,10 +177,12 @@ public class SelectBattleMode : MonoBehaviour
             baseInfo,
             true);
 
-        // Surface current ladder rank on the mode picker (home WinCount is hidden in scene).
+        // === DCGO-CUSTOM:ranked begin ===
         ContinuousController.instance.StartCoroutine(ShowRankOnBattleModeSelect(baseInfo));
+        // === DCGO-CUSTOM:ranked end ===
     }
 
+    // === DCGO-CUSTOM:ranked begin ===
     IEnumerator ShowRankOnBattleModeSelect(string baseInfo)
     {
         yield return RankedServices.EnsureExists().BootstrapForRanked();
@@ -199,6 +215,7 @@ public class SelectBattleMode : MonoBehaviour
             }
         }
     }
+    // === DCGO-CUSTOM:ranked end ===
 
     void StartSelectBattleDeck(bool isAI, bool isRanked = false)
     {
@@ -212,19 +229,30 @@ public class SelectBattleMode : MonoBehaviour
         selectRoomMatchWindow.Close_(false);
 
         ContinuousController.instance.isAI = isAI;
+        // === DCGO-CUSTOM:ranked begin ===
         ContinuousController.instance.isRanked = isRanked && !isAI;
         ContinuousController.instance.isRandomMatch = !isAI && !isRanked;
+        // === DCGO-CUSTOM:ranked end ===
+        // === DCGO-CUSTOM:tournament begin ===
         ContinuousController.instance.isTournament = false;
+        // === DCGO-CUSTOM:tournament end ===
+        // === DCGO-CUSTOM:friends begin ===
+        ContinuousController.instance.ClearFriendDuel();
+        // === DCGO-CUSTOM:friends end ===
         if (isRanked)
         {
+            // === DCGO-CUSTOM:ranked begin ===
             ContinuousController.instance.useBanlist = true;
+            // === DCGO-CUSTOM:ranked end ===
         }
 
         Opening.instance.battle.selectBattleDeck.Off();
 
         if (ContinuousController.instance.isRanked)
         {
+            // === DCGO-CUSTOM:ranked begin ===
             Opening.instance.battle.selectBattleDeck.SetUpSelectBattleDeck(Opening.instance.battle.selectBattleDeck.OnClickSelectButton_RankedMatch, 0);
+            // === DCGO-CUSTOM:ranked end ===
         }
         else if (!ContinuousController.instance.isAI)
         {
@@ -275,9 +303,16 @@ public class SelectBattleMode : MonoBehaviour
 
         Opening.instance.battle.selectBattleDeck.Off();
         ContinuousController.instance.isAI = false;
+        // === DCGO-CUSTOM:ranked begin ===
         ContinuousController.instance.isRanked = false;
+        // === DCGO-CUSTOM:ranked end ===
         ContinuousController.instance.isRandomMatch = false;
+        // === DCGO-CUSTOM:tournament begin ===
         ContinuousController.instance.isTournament = false;
+        // === DCGO-CUSTOM:tournament end ===
+        // === DCGO-CUSTOM:friends begin ===
+        ContinuousController.instance.ClearFriendDuel();
+        // === DCGO-CUSTOM:friends end ===
 
         List<UnityAction> Commands = new List<UnityAction>()
             {
@@ -318,7 +353,9 @@ public class SelectBattleMode : MonoBehaviour
 
     void StartCreateRoom()
     {
+        // === DCGO-CUSTOM:tournament begin ===
         enterRoom.JoinTournament = false;
+        // === DCGO-CUSTOM:tournament end ===
         roomManager.SetUpRoom();
     }
 
@@ -330,10 +367,13 @@ public class SelectBattleMode : MonoBehaviour
 
         Opening.instance.deck.deckListPanel.Close();
 
+        // === DCGO-CUSTOM:tournament begin ===
         enterRoom.JoinTournament = false;
+        // === DCGO-CUSTOM:tournament end ===
         enterRoom.SetUpEnterRoom();
     }
 
+    // === DCGO-CUSTOM:tournament begin ===
     public void StartSelectTournament()
     {
         Opening.instance.OffYesNoObjects();
@@ -347,6 +387,9 @@ public class SelectBattleMode : MonoBehaviour
         ContinuousController.instance.isRanked = false;
         ContinuousController.instance.isRandomMatch = false;
         ContinuousController.instance.isTournament = true;
+        // === DCGO-CUSTOM:friends begin ===
+        ContinuousController.instance.ClearFriendDuel();
+        // === DCGO-CUSTOM:friends end ===
 
         List<UnityAction> Commands = new List<UnityAction>()
             {
@@ -430,10 +473,13 @@ public class SelectBattleMode : MonoBehaviour
         enterRoom.JoinTournament = true;
         enterRoom.SetUpEnterRoom();
     }
+    // === DCGO-CUSTOM:tournament end ===
 
     public void OnClickCloseEnterRoomWindow()
     {
+        // === DCGO-CUSTOM:tournament begin ===
         enterRoom.JoinTournament = false;
+        // === DCGO-CUSTOM:tournament end ===
         enterRoom.Close_(false);
         ContinuousController.instance.PlaySE(Opening.instance.CancelSE);
 
@@ -446,13 +492,17 @@ public class SelectBattleMode : MonoBehaviour
 
     public void OnClickCloseSelectRoomMatchWindow()
     {
+        // === DCGO-CUSTOM:tournament begin ===
         enterRoom.JoinTournament = false;
+        // === DCGO-CUSTOM:tournament end ===
         enterRoom.Close_(false);
         selectRoomMatchWindow.Close_(false);
+        // === DCGO-CUSTOM:tournament begin ===
         if (ContinuousController.instance.isTournament && !PhotonNetwork.InRoom)
         {
             ContinuousController.instance.ClearTournament();
         }
+        // === DCGO-CUSTOM:tournament end ===
         ContinuousController.instance.PlaySE(Opening.instance.CancelSE);
 
         Opening.instance.OffYesNoObjects();
@@ -464,7 +514,9 @@ public class SelectBattleMode : MonoBehaviour
 
     public void OnClickSelectBattleModeWindow()
     {
+        // === DCGO-CUSTOM:tournament begin ===
         enterRoom.JoinTournament = false;
+        // === DCGO-CUSTOM:tournament end ===
         enterRoom.Close_(true);
         selectRoomMatchWindow.Close_(false);
         selectBattleModeWindow.Close_(false);
