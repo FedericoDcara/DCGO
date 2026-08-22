@@ -214,6 +214,7 @@ public class TournamentLobbyManager : MonoBehaviourPunCallbacks
                     TournamentKeys.PlayerCountProperty,
                 },
             };
+            BattleReconnectService.ApplyBattleTtl(options);
 
             PhotonNetwork.CreateRoom(roomName, options, null);
 
@@ -272,7 +273,7 @@ public class TournamentLobbyManager : MonoBehaviourPunCallbacks
 
         if (PhotonNetwork.InRoom)
         {
-            PhotonNetwork.LeaveRoom();
+            PhotonUtility.LeaveRoomImmediate();
         }
 
         yield return new WaitWhile(() => PhotonNetwork.InRoom);

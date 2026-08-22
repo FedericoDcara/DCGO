@@ -24,6 +24,21 @@ public static class PlayFabClientApi
         EntityToken = null;
     }
 
+    static void ApplyLoginResult(ApiResult result)
+    {
+        if (result == null || !result.success || result.data == null)
+        {
+            return;
+        }
+
+        SessionTicket = GetString(result.data, "SessionTicket");
+        PlayFabId = GetString(result.data, "PlayFabId");
+        if (result.data.TryGetValue("EntityToken", out var etObj) && etObj is Dictionary<string, object> et)
+        {
+            EntityToken = GetString(et, "EntityToken");
+        }
+    }
+
     static string ApiRoot(string titleId) => $"https://{titleId}.playfabapi.com";
 
     public class ApiResult
@@ -65,16 +80,7 @@ public static class PlayFabClientApi
 
         yield return Post(titleId, "/Client/LoginWithCustomID", body, null, result =>
         {
-            if (result.success && result.data != null)
-            {
-                SessionTicket = GetString(result.data, "SessionTicket");
-                PlayFabId = GetString(result.data, "PlayFabId");
-                if (result.data.TryGetValue("EntityToken", out var etObj) && etObj is Dictionary<string, object> et)
-                {
-                    EntityToken = GetString(et, "EntityToken");
-                }
-            }
-
+            ApplyLoginResult(result);
             onComplete?.Invoke(result);
         });
     }
@@ -217,6 +223,266 @@ public static class PlayFabClientApi
         var body = new Dictionary<string, object> { { "DisplayName", displayName } };
         yield return Post(titleId, "/Client/UpdateUserTitleDisplayName", body, SessionTicket, onComplete);
     }
+
+    // === DCGO-CUSTOM:recovery begin ===
+    public static IEnumerator LoginWithPlayFab(
+        string titleId,
+        string username,
+        string password,
+        Action<ApiResult> onComplete)
+    {
+        titleId = titleId?.Trim();
+        username = username?.Trim();
+
+        if (string.IsNullOrEmpty(titleId) || string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
+        {
+            onComplete?.Invoke(new ApiResult
+            {
+                success = false,
+                errorMessage = "TitleId, Username, and Password are required for LoginWithPlayFab",
+            });
+            yield break;
+        }
+
+        var body = new Dictionary<string, object>
+        {
+            { "TitleId", titleId },
+            { "Username", username },
+            { "Password", password },
+        };
+
+        yield return Post(titleId, "/Client/LoginWithPlayFab", body, null, result =>
+        {
+            ApplyLoginResult(result);
+            onComplete?.Invoke(result);
+        });
+    }
+
+    public static IEnumerator AddUsernamePassword(
+        string titleId,
+        string username,
+        string password,
+        Action<ApiResult> onComplete)
+    {
+        username = username?.Trim();
+        if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
+        {
+            onComplete?.Invoke(new ApiResult
+            {
+                success = false,
+                errorMessage = "Username and Password are required for AddUsernamePassword",
+            });
+            yield break;
+        }
+
+        var body = new Dictionary<string, object>
+        {
+            { "Username", username },
+            { "Password", password },
+        };
+
+        yield return Post(titleId, "/Client/AddUsernamePassword", body, SessionTicket, onComplete);
+    }
+
+    public static IEnumerator GetAccountInfo(string titleId, Action<ApiResult, string> onComplete)
+    {
+        var body = new Dictionary<string, object>();
+        yield return Post(titleId, "/Client/GetAccountInfo", body, SessionTicket, result =>
+        {
+            string username = null;
+            if (result.success && result.data != null &&
+                result.data.TryGetValue("AccountInfo", out var aiObj) &&
+                aiObj is Dictionary<string, object> accountInfo)
+            {
+                username = GetString(accountInfo, "Username");
+            }
+
+            onComplete?.Invoke(result, username);
+        });
+    }
+
+    public static IEnumerator LinkCustomId(
+        string titleId,
+        string customId,
+        bool forceLink,
+        Action<ApiResult> onComplete)
+    {
+        customId = customId?.Trim();
+        if (string.IsNullOrEmpty(customId))
+        {
+            onComplete?.Invoke(new ApiResult
+            {
+                success = false,
+                errorMessage = "CustomId is required for LinkCustomID",
+            });
+            yield break;
+        }
+
+        var body = new Dictionary<string, object>
+        {
+            { "CustomId", customId },
+            { "ForceLink", forceLink },
+        };
+
+        yield return Post(titleId, "/Client/LinkCustomID", body, SessionTicket, onComplete);
+    }
+
+    public static IEnumerator GetUserData(
+        string titleId,
+        IList<string> keys,
+        Action<ApiResult, Dictionary<string, string>> onComplete)
+    {
+        var body = new Dictionary<string, object>();
+        if (keys != null && keys.Count > 0)
+        {
+            body["Keys"] = new List<string>(keys);
+        }
+
+        yield return Post(titleId, "/Client/GetUserData", body, SessionTicket, result =>
+        {
+            var map = new Dictionary<string, string>();
+            if (result.success && result.data != null &&
+                result.data.TryGetValue("Data", out var dataObj) &&
+                dataObj is Dictionary<string, object> dataDict)
+            {
+                foreach (var kv in dataDict)
+                {
+                    if (kv.Value is Dictionary<string, object> entry)
+                    {
+                        string value = GetString(entry, "Value");
+                        if (value != null)
+                        {
+                            map[kv.Key] = value;
+                        }
+                    }
+                }
+            }
+
+            onComplete?.Invoke(result, map);
+        });
+    }
+
+    public static IEnumerator UpdateUserData(
+        string titleId,
+        Dictionary<string, string> data,
+        Action<ApiResult> onComplete)
+    {
+        var dataObj = new Dictionary<string, object>();
+        if (data != null)
+        {
+            foreach (var kv in data)
+            {
+                dataObj[kv.Key] = kv.Value;
+            }
+        }
+
+        var body = new Dictionary<string, object>
+        {
+            { "Data", dataObj },
+        };
+
+        yield return Post(titleId, "/Client/UpdateUserData", body, SessionTicket, onComplete);
+    }
+    // === DCGO-CUSTOM:recovery end ===
+
+    // === DCGO-CUSTOM:friends begin ===
+    public static IEnumerator GetFriendsList(string titleId, Action<ApiResult, List<FriendEntry>> onComplete)
+    {
+        var body = new Dictionary<string, object>
+        {
+            { "IncludeSteamFriends", false },
+            { "IncludeFacebookFriends", false },
+        };
+
+        yield return Post(titleId, "/Client/GetFriendsList", body, SessionTicket, result =>
+        {
+            var list = new List<FriendEntry>();
+            if (result.success && result.data != null &&
+                result.data.TryGetValue("Friends", out var fObj) && fObj is List<object> friends)
+            {
+                foreach (var item in friends)
+                {
+                    if (!(item is Dictionary<string, object> dict))
+                    {
+                        continue;
+                    }
+
+                    string id = GetString(dict, "FriendPlayFabId");
+                    string name = null;
+                    if (dict.TryGetValue("TitleDisplayName", out var tdn) && tdn != null)
+                    {
+                        name = tdn.ToString();
+                    }
+                    else if (dict.TryGetValue("Username", out var un) && un != null)
+                    {
+                        name = un.ToString();
+                    }
+
+                    if (dict.TryGetValue("Profile", out var profObj) && profObj is Dictionary<string, object> profile)
+                    {
+                        string dn = GetString(profile, "DisplayName");
+                        if (!string.IsNullOrEmpty(dn))
+                        {
+                            name = dn;
+                        }
+                    }
+
+                    if (!string.IsNullOrEmpty(id))
+                    {
+                        list.Add(new FriendEntry(id, string.IsNullOrEmpty(name) ? id : name));
+                    }
+                }
+            }
+
+            onComplete?.Invoke(result, list);
+        });
+    }
+
+    public static IEnumerator AddFriend(string titleId, string friendPlayFabId, Action<ApiResult> onComplete)
+    {
+        var body = new Dictionary<string, object>
+        {
+            { "FriendPlayFabId", friendPlayFabId },
+        };
+        yield return Post(titleId, "/Client/AddFriend", body, SessionTicket, onComplete);
+    }
+
+    public static IEnumerator RemoveFriend(string titleId, string friendPlayFabId, Action<ApiResult> onComplete)
+    {
+        var body = new Dictionary<string, object>
+        {
+            { "FriendPlayFabId", friendPlayFabId },
+        };
+        yield return Post(titleId, "/Client/RemoveFriend", body, SessionTicket, onComplete);
+    }
+
+    public static IEnumerator GetPlayerProfile(string titleId, string playFabId, Action<ApiResult, string> onComplete)
+    {
+        var body = new Dictionary<string, object>
+        {
+            { "PlayFabId", playFabId },
+            {
+                "ProfileConstraints", new Dictionary<string, object>
+                {
+                    { "ShowDisplayName", true },
+                }
+            },
+        };
+
+        yield return Post(titleId, "/Client/GetPlayerProfile", body, SessionTicket, result =>
+        {
+            string displayName = null;
+            if (result.success && result.data != null &&
+                result.data.TryGetValue("PlayerProfile", out var pp) &&
+                pp is Dictionary<string, object> profile)
+            {
+                displayName = GetString(profile, "DisplayName");
+            }
+
+            onComplete?.Invoke(result, displayName);
+        });
+    }
+    // === DCGO-CUSTOM:friends end ===
 
     static IEnumerator Post(
         string titleId,

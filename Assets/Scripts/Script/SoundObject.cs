@@ -25,10 +25,12 @@ public class SoundObject : MonoBehaviour
 
     private void Update()
     {
+        // === DCGO-CUSTOM:android begin ===
         if (_audio == null)
         {
             return;
         }
+        // === DCGO-CUSTOM:android end ===
 
         if (ContinuousController.instance != null)
         {

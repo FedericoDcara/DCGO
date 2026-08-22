@@ -89,8 +89,10 @@ public class GManager : MonoBehaviourPun
     [Header("プレイログ")]
     public PlayLog playLog;
 
+    // === DCGO-CUSTOM:chat begin ===
     [Header("バトルチャット")]
     public BattleChatPanel battleChat;
+    // === DCGO-CUSTOM:chat end ===
 
     [Header("メモリー")]
     public MemoryObject memoryObject;
@@ -278,7 +280,9 @@ public class GManager : MonoBehaviourPun
 
         playLog.Init();
 
+        // === DCGO-CUSTOM:chat begin ===
         EnsureBattleChat();
+        // === DCGO-CUSTOM:chat end ===
 
         hideCannotSelectObject.Init();
 
@@ -320,6 +324,7 @@ public class GManager : MonoBehaviourPun
         ContinuousController.instance.PlaySE(CancelSE);
     }
 
+    // === DCGO-CUSTOM:chat begin ===
     void EnsureBattleChat()
     {
         bool enableChat = ContinuousController.instance != null
@@ -357,6 +362,7 @@ public class GManager : MonoBehaviourPun
         if (battleChat != null)
             battleChat.Init();
     }
+    // === DCGO-CUSTOM:chat end ===
 
     public async void ChangeBackground()
     {
@@ -392,23 +398,50 @@ public class GManager : MonoBehaviourPun
 
         while (true)
         {
+            // === DCGO-CUSTOM:reconnect begin ===
+            var reconnect = BattleReconnectService.Instance;
+            bool reconnecting = reconnect != null && reconnect.IsReconnecting;
+
             if (!PhotonNetwork.IsConnected || !PhotonNetwork.InRoom)
             {
+                if (reconnecting)
+                {
+                    yield return null;
+                    continue;
+                }
+
                 break;
             }
 
-            if (PhotonNetwork.CurrentRoom != null && PhotonNetwork.PlayerList.Length < 2)
+            if (PhotonNetwork.CurrentRoom != null && BattleReconnectService.CountActivePlayers() < 2)
             {
+                if (BattleReconnectService.HasInactiveOpponent())
+                {
+                    reconnect?.EnsureHoldForOpponent();
+                    yield return null;
+                    continue;
+                }
+
+                if (reconnecting)
+                {
+                    yield return null;
+                    continue;
+                }
+
                 break;
             }
+            // === DCGO-CUSTOM:reconnect end ===
 
             yield return null;
         }
 
         if (turnStateMachine != null && !turnStateMachine.endGame)
         {
+            // === DCGO-CUSTOM:reconnect begin ===
+            BattleReconnectService.Instance?.ReleaseBattleHold();
             bool weDisconnected = !PhotonNetwork.IsConnected || !PhotonNetwork.InRoom;
             turnStateMachine.EndGame(weDisconnected ? null : You, false);
+            // === DCGO-CUSTOM:reconnect end ===
         }
     }
 
@@ -572,9 +605,17 @@ public class GManager : MonoBehaviourPun
     {
         // Disable cheats in any online competitive mode
         return ContinuousController.instance.isAI ||
-               (!ContinuousController.instance.isRandomMatch &&
-                !ContinuousController.instance.isRanked &&
-                !ContinuousController.instance.isTournament);
+               (!ContinuousController.instance.isRandomMatch
+                // === DCGO-CUSTOM:ranked begin ===
+                && !ContinuousController.instance.isRanked
+                // === DCGO-CUSTOM:ranked end ===
+                // === DCGO-CUSTOM:tournament begin ===
+                && !ContinuousController.instance.isTournament
+                // === DCGO-CUSTOM:tournament end ===
+                // === DCGO-CUSTOM:friends begin ===
+                && !ContinuousController.instance.isFriendDuel
+                // === DCGO-CUSTOM:friends end ===
+               );
     }
 
     void AllowAlphaInputs()

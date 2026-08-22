@@ -76,12 +76,15 @@ public class SelectBattleDeck : MonoBehaviour
         ContinuousController.instance.StartCoroutine(SetOnce());
 
         ContinuousController.instance.BattleDeckData = deckInfoPanel.ShowingDeckData;
+        // === DCGO-CUSTOM:ranked begin ===
         ContinuousController.instance.isRanked = false;
+        // === DCGO-CUSTOM:ranked end ===
         ContinuousController.instance.isRandomMatch = true;
 
         Opening.instance.battle.lobbyManager_RandomMatch.SetUpLobby();
     }
 
+    // === DCGO-CUSTOM:ranked begin ===
     public void OnClickSelectButton_RankedMatch()
     {
         if (_once || deckInfoPanel.ShowingDeckData == null)
@@ -112,6 +115,7 @@ public class SelectBattleDeck : MonoBehaviour
 
         rankedLobby.SetUpLobby();
     }
+    // === DCGO-CUSTOM:ranked end ===
 
     public void OnClickSelectButton_BotMatch()
     {
@@ -123,7 +127,9 @@ public class SelectBattleDeck : MonoBehaviour
         ContinuousController.instance.StartCoroutine(SetOnce());
 
         ContinuousController.instance.BattleDeckData = deckInfoPanel.ShowingDeckData;
+        // === DCGO-CUSTOM:ranked begin ===
         ContinuousController.instance.isRanked = false;
+        // === DCGO-CUSTOM:ranked end ===
     }
 
     public IEnumerator OnClickSelectButton_RoomMatchCoroutine()
@@ -168,10 +174,12 @@ public class SelectBattleDeck : MonoBehaviour
 
     public async void SetUpSelectBattleDeck(UnityAction OnClickSelectButtonAction, int _)
     {
+        // === DCGO-CUSTOM:tournament begin ===
         if (ContinuousController.instance != null && ContinuousController.instance.isTournamentStarted)
         {
             return;
         }
+        // === DCGO-CUSTOM:tournament end ===
 
         if (SelectDeckObject.activeSelf)
         {
@@ -226,6 +234,7 @@ public class SelectBattleDeck : MonoBehaviour
                 JpnMessage: "使用デッキ選択 - Bot戦"
                 );
         }
+        // === DCGO-CUSTOM:ranked begin ===
         else if (ContinuousController.instance.isRanked)
         {
             message = LocalizeUtility.GetLocalizedString(
@@ -243,6 +252,7 @@ public class SelectBattleDeck : MonoBehaviour
                 ContinuousController.instance.StartCoroutine(AppendRankToDeckTitleWhenReady(message));
             }
         }
+        // === DCGO-CUSTOM:ranked end ===
         else if (ContinuousController.instance.isRandomMatch)
         {
             message = LocalizeUtility.GetLocalizedString(
@@ -250,6 +260,7 @@ public class SelectBattleDeck : MonoBehaviour
                 JpnMessage: "使用デッキ選択 - ランダムマッチ"
                 );
         }
+        // === DCGO-CUSTOM:tournament begin ===
         else if (ContinuousController.instance.isTournament)
         {
             message = LocalizeUtility.GetLocalizedString(
@@ -257,6 +268,7 @@ public class SelectBattleDeck : MonoBehaviour
                 JpnMessage: "使用デッキ選択 - トーナメント（開始後は変更不可）"
                 );
         }
+        // === DCGO-CUSTOM:tournament end ===
         else
         {
             message = LocalizeUtility.GetLocalizedString(
@@ -275,6 +287,7 @@ public class SelectBattleDeck : MonoBehaviour
         }
     }
 
+    // === DCGO-CUSTOM:ranked begin ===
     IEnumerator AppendRankToDeckTitleWhenReady(string baseMessage)
     {
         yield return RankedServices.EnsureExists().BootstrapForRanked();
@@ -285,6 +298,7 @@ public class SelectBattleDeck : MonoBehaviour
             TitleText.text = $"{baseMessage}\n{profile.FormatStatusLine()}";
         }
     }
+    // === DCGO-CUSTOM:ranked end ===
 
     public void Close()
     {

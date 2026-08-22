@@ -301,6 +301,7 @@ public class CardObjectController : MonoBehaviour
         DeckData ResolveOnlineDeckData(Photon.Realtime.Player _player)
         {
             var cc = ContinuousController.instance;
+            // === DCGO-CUSTOM:tournament begin ===
             if (cc != null && cc.isTournamentStarted)
             {
                 string userId = TournamentState.ReadPlayerId(_player);
@@ -328,6 +329,7 @@ public class CardObjectController : MonoBehaviour
                     }
                 }
             }
+            // === DCGO-CUSTOM:tournament end ===
 
             Hashtable _hashtable = _player.CustomProperties;
             if (_hashtable != null && _hashtable.TryGetValue(ContinuousController.DeckDataPropertyKey, out object value) &&

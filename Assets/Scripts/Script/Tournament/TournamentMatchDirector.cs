@@ -93,7 +93,6 @@ public class TournamentMatchDirector : MonoBehaviourPunCallbacks
             PublishUserId = true,
             MaxPlayers = 2,
             EmptyRoomTtl = 120000,
-            PlayerTtl = 0,
             CustomRoomProperties = new Hashtable
             {
                 { TournamentKeys.ModeProperty, TournamentKeys.ModeTournament },
@@ -115,6 +114,7 @@ public class TournamentMatchDirector : MonoBehaviourPunCallbacks
                 TournamentKeys.TourneyIdProperty,
             },
         };
+        BattleReconnectService.ApplyBattleTtl(options);
 
         for (int attempt = 0; attempt < 3; attempt++)
         {
@@ -146,19 +146,38 @@ public class TournamentMatchDirector : MonoBehaviourPunCallbacks
 
         float wait = 0f;
         const float assignedOpponentTimeout = 45f * 60f;
-        while (PhotonNetwork.InRoom && PhotonNetwork.CurrentRoom.PlayerCount < 2)
+        int maxActiveSeen = BattleReconnectService.CountActivePlayers();
+        while (PhotonNetwork.InRoom && BattleReconnectService.CountActivePlayers() < 2)
         {
+            int active = BattleReconnectService.CountActivePlayers();
+            if (active > maxActiveSeen)
+            {
+                maxActiveSeen = active;
+            }
+
             var waitingMatch = state.GetMatch(_round, _matchIndex);
             bool opponentSeatEmpty = waitingMatch != null &&
                 (string.IsNullOrEmpty(waitingMatch.userIdA) || string.IsNullOrEmpty(waitingMatch.userIdB));
             // Bye winners sit in the next match room until the feeder series finishes.
             // Never forfeit that wait — a Bo3 can last far longer than a few minutes.
+            if (BattleReconnectService.HasInactiveOpponent())
+            {
+                wait += Time.unscaledDeltaTime;
+                yield return null;
+                continue;
+            }
+
+            if (!opponentSeatEmpty && maxActiveSeen >= 2)
+            {
+                break;
+            }
+
             if (!opponentSeatEmpty && wait >= assignedOpponentTimeout)
             {
                 break;
             }
 
-            wait += Time.deltaTime;
+            wait += Time.unscaledDeltaTime;
             yield return null;
         }
 
@@ -168,7 +187,7 @@ public class TournamentMatchDirector : MonoBehaviourPunCallbacks
             yield break;
         }
 
-        if (PhotonNetwork.CurrentRoom.PlayerCount < 2)
+        if (BattleReconnectService.CountActivePlayers() < 2)
         {
             InMatchRoom = false;
             yield return JoinWaitHubCoroutine();
@@ -200,7 +219,6 @@ public class TournamentMatchDirector : MonoBehaviourPunCallbacks
             MaxPlayers = (byte)TournamentKeys.NormalizePlayerCount(
                 state.ResolvedPlayerCount),
             EmptyRoomTtl = 300000,
-            PlayerTtl = 0,
             CustomRoomProperties = new Hashtable
             {
                 { TournamentKeys.ModeProperty, TournamentKeys.ModeTournament },
@@ -218,6 +236,7 @@ public class TournamentMatchDirector : MonoBehaviourPunCallbacks
                 TournamentKeys.TourneyIdProperty,
             },
         };
+        BattleReconnectService.ApplyBattleTtl(options);
 
         yield return JoinOrCreateNamedRoom(roomName, options);
         if (!PhotonNetwork.InRoom)
@@ -264,7 +283,7 @@ public class TournamentMatchDirector : MonoBehaviourPunCallbacks
         string localId = TournamentState.EnsureLocalPlayerId();
         string winnerId = null;
 
-        if (PhotonNetwork.InRoom && PhotonNetwork.PlayerList.Length < 2)
+        if (PhotonNetwork.InRoom && BattleReconnectService.CountActivePlayers() < 2)
         {
             // Empty match: surrender / disconnect must not start another ghost game.
             ShouldReloadNextGame = false;
@@ -296,7 +315,7 @@ public class TournamentMatchDirector : MonoBehaviourPunCallbacks
         }
         else if (disconnect)
         {
-            if (PhotonNetwork.IsConnected && PhotonNetwork.InRoom && PhotonNetwork.PlayerList.Length < 2)
+            if (PhotonNetwork.IsConnected && PhotonNetwork.InRoom && BattleReconnectService.CountActivePlayers() < 2)
             {
                 winnerId = localId;
             }
@@ -422,13 +441,13 @@ public class TournamentMatchDirector : MonoBehaviourPunCallbacks
             yield return null;
         }
 
-        if (ShouldReloadNextGame && PhotonNetwork.InRoom && PhotonNetwork.PlayerList.Length >= 2)
+        if (ShouldReloadNextGame && PhotonNetwork.InRoom && BattleReconnectService.CountActivePlayers() >= 2)
         {
             float waitBoth = 0f;
             const float waitBothTimeout = 8f;
             while (waitBoth < waitBothTimeout && !AllPlayersOnResult())
             {
-                if (!PhotonNetwork.InRoom || PhotonNetwork.PlayerList.Length < 2)
+                if (!PhotonNetwork.InRoom || BattleReconnectService.CountActivePlayers() < 2)
                 {
                     break;
                 }
@@ -576,13 +595,14 @@ public class TournamentMatchDirector : MonoBehaviourPunCallbacks
         }
 
         float wait = 0f;
-        while (PhotonNetwork.InRoom && PhotonNetwork.CurrentRoom.PlayerCount < 2 && wait < 30f)
+        float reconnectWait = BattleReconnectService.PlayerTtlMs / 1000f;
+        while (PhotonNetwork.InRoom && BattleReconnectService.CountActivePlayers() < 2 && wait < reconnectWait)
         {
             wait += Time.unscaledDeltaTime;
             yield return null;
         }
 
-        if (!PhotonNetwork.InRoom || PhotonNetwork.CurrentRoom.PlayerCount < 2)
+        if (!PhotonNetwork.InRoom || BattleReconnectService.CountActivePlayers() < 2)
         {
             // Opponent never arrived — do not award a phantom series. Meet in the hub.
             yield return JoinWaitHubCoroutine();
@@ -640,9 +660,9 @@ public class TournamentMatchDirector : MonoBehaviourPunCallbacks
 
         if (!InConfiguredMatchRoom() ||
             !PhotonNetwork.InRoom ||
-            PhotonNetwork.CurrentRoom.PlayerCount < 2)
+            BattleReconnectService.CountActivePlayers() < 2)
         {
-            Debug.LogWarning($"[Tournament] Refusing to start battle in '{PhotonNetwork.CurrentRoom?.Name}' players={PhotonNetwork.CurrentRoom?.PlayerCount}");
+            Debug.LogWarning($"[Tournament] Refusing to start battle in '{PhotonNetwork.CurrentRoom?.Name}' players={BattleReconnectService.CountActivePlayers()}");
             _startingBattle = false;
             yield break;
         }
@@ -1055,7 +1075,7 @@ public class TournamentMatchDirector : MonoBehaviourPunCallbacks
 
         if (PhotonNetwork.InRoom)
         {
-            PhotonNetwork.LeaveRoom();
+            PhotonNetwork.LeaveRoom(false);
             yield return new WaitWhile(() => PhotonNetwork.InRoom);
         }
 
@@ -1161,12 +1181,8 @@ public class TournamentMatchDirector : MonoBehaviourPunCallbacks
 
     public override void OnPlayerLeftRoom(Photon.Realtime.Player otherPlayer)
     {
-        if (GManager.instance != null &&
-            GManager.instance.turnStateMachine != null &&
-            !GManager.instance.turnStateMachine.endGame)
-        {
-            GManager.instance.turnStateMachine.EndGame(GManager.instance.You, false);
-        }
+        // Inactive disconnects are held by BattleReconnectService until PlayerTtl.
+        // A full leave (TTL expired / LeaveRoom(false)) is a forfeit via GManager.CheckDisconnect.
     }
 
     public override void OnPlayerEnteredRoom(Photon.Realtime.Player newPlayer)
@@ -1177,7 +1193,7 @@ public class TournamentMatchDirector : MonoBehaviourPunCallbacks
             return;
         }
 
-        if (PhotonNetwork.InRoom && PhotonNetwork.CurrentRoom.PlayerCount >= 2)
+        if (PhotonNetwork.InRoom && BattleReconnectService.CountActivePlayers() >= 2)
         {
             StartCoroutine(StartBattleCoroutine(isRematch: false));
         }
