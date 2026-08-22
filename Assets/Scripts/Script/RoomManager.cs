@@ -86,6 +86,14 @@ public class RoomManager : MonoBehaviourPunCallbacks
 
         Parent.SetActive(true);
 
+        // === DCGO-CUSTOM:friends begin ===
+        if (FriendKeys.IsInFriendDuelRoom())
+        {
+            ContinuousController.instance.isFriendDuel = true;
+            FriendServices.EnsureExists().Director.BeginSeriesFromRoom();
+        }
+        // === DCGO-CUSTOM:friends end ===
+
         if (!PhotonNetwork.InRoom)
         {
             yield return ContinuousController.instance.StartCoroutine(CreateRoomCoroutine());
@@ -185,9 +193,24 @@ public class RoomManager : MonoBehaviourPunCallbacks
     #region Initialized when room screen is opened
     public IEnumerator Init(bool OnUnload)
     {
+        // === DCGO-CUSTOM:friends begin ===
+        // Friend matches must not land on Room Match rematch UI after a game.
+        if (OnUnload && FriendKeys.IsInFriendDuelRoom())
+        {
+            Off();
+            yield break;
+        }
+        // === DCGO-CUSTOM:friends end ===
+
         Opening.instance.battle.selectBattleDeck.Off();
         DoneStartBattle = false;
         _isReady = false;
+
+        // Rematch return: ensure the Room Match panel is visible after a game.
+        if (OnUnload && Parent != null)
+        {
+            Parent.SetActive(true);
+        }
 
         playerCount = 0;//PhotonNetwork.CurrentRoom.PlayerCount;
         DestroyChildObject();//Delete PlayerElement
@@ -248,7 +271,17 @@ public class RoomManager : MonoBehaviourPunCallbacks
 
         #region RoomName
         string RoomName = PhotonNetwork.CurrentRoom.Name;
-        RoomIDText.text = RoomName[..5];
+        // === DCGO-CUSTOM:friends begin ===
+        if (ContinuousController.instance != null && ContinuousController.instance.isFriendDuel)
+        {
+            // Friend challenges are invite-based — do not show the truncated Room Match code.
+            RoomIDText.text = "WAIT";
+        }
+        else
+        // === DCGO-CUSTOM:friends end ===
+        {
+            RoomIDText.text = RoomName.Length >= 5 ? RoomName[..5] : RoomName;
+        }
         #endregion
     }
     #endregion
@@ -339,7 +372,12 @@ public class RoomManager : MonoBehaviourPunCallbacks
 
     public void Off()
     {
-        Parent.SetActive(false);
+        DoneStartBattle = false;
+        _isReady = false;
+        if (Parent != null)
+        {
+            Parent.SetActive(false);
+        }
     }
     #endregion
 
@@ -433,13 +471,15 @@ public class RoomManager : MonoBehaviourPunCallbacks
         }
         // === DCGO-CUSTOM:tournament end ===
         // === DCGO-CUSTOM:friends begin ===
+        // Friend rematch is started by FriendDuelDirector. Room lobby must not
+        // auto-start, but after a finished game DoneStartBattle can leave players
+        // stuck with only Quit — reset the gate when series is over.
         if (ContinuousController.instance != null &&
             ContinuousController.instance.isFriendDuel &&
             FriendServices.Instance != null &&
             FriendServices.Instance.Director != null &&
-            FriendServices.Instance.Director.GameIndex > 0)
+            FriendServices.Instance.Director.ShouldReloadNextGame)
         {
-            // Mid-series rematch is started by FriendDuelDirector, not ready checks.
             return;
         }
         // === DCGO-CUSTOM:friends end ===
@@ -529,6 +569,11 @@ public class RoomManager : MonoBehaviourPunCallbacks
         }
         // === DCGO-CUSTOM:tournament end ===
         // === DCGO-CUSTOM:friends begin ===
+        if (FriendKeys.IsInFriendDuelRoom())
+        {
+            ContinuousController.instance.isFriendDuel = true;
+        }
+
         if (ContinuousController.instance.isFriendDuel && ContinuousController.IsBattleSceneLoaded())
         {
             yield break;
@@ -843,8 +888,25 @@ public class RoomManager : MonoBehaviourPunCallbacks
     {
         if (PhotonNetwork.InRoom)
         {
+            // === DCGO-CUSTOM:friends begin ===
+            if (ContinuousController.instance != null && ContinuousController.instance.isFriendDuel)
+            {
+                List<UnityAction> friendCmds = new List<UnityAction>() { null };
+                List<string> friendTexts = new List<string>() { "OK" };
+                Opening.instance.SetUpActiveYesNoObject(
+                    friendCmds,
+                    friendTexts,
+                    LocalizeUtility.GetLocalizedString(
+                        EngMessage: "Waiting for your friend to accept the invite.\nNo room code is needed.",
+                        JpnMessage: "フレンドの招待承認を待っています。\nルームIDの共有は不要です。"),
+                    false);
+                return;
+            }
+            // === DCGO-CUSTOM:friends end ===
+
             #region クリップボードにデッキコードをコピー
-            GUIUtility.systemCopyBuffer = PhotonNetwork.CurrentRoom.Name[..5];
+            string roomName = PhotonNetwork.CurrentRoom.Name;
+            GUIUtility.systemCopyBuffer = roomName.Length >= 5 ? roomName[..5] : roomName;
             #endregion
 
             List<UnityAction> Commands = new List<UnityAction>()

@@ -88,8 +88,7 @@ public class FriendListPanel : MonoBehaviour
         {
             svc.List.Changed -= RefreshList;
             svc.Duel.PresenceChanged -= RefreshList;
-            // Keep invite listening while on home; presence poll can stop when panel closed
-            svc.Duel.StopPresencePolling();
+            // Do not stop presence / invite watch — Home keeps listening for challenges.
         }
     }
 

@@ -129,6 +129,12 @@ public class HomeMode : MonoBehaviour
                 PhotonUtility.SetRankedPlayerProperties());
         }
 
+        if (PhotonNetwork.InRoom ||
+            (ContinuousController.instance != null && ContinuousController.instance.isFriendDuel))
+        {
+            yield break;
+        }
+
         friends.Duel.SetInviteListening(true);
     }
     // === DCGO-CUSTOM:friends end ===

@@ -1441,6 +1441,9 @@ public class ContinuousController : MonoBehaviour
         // === DCGO-CUSTOM:tournament begin ===
         TournamentServices.Instance?.Match?.CancelAutoAdvanceFromResult();
         // === DCGO-CUSTOM:tournament end ===
+        // === DCGO-CUSTOM:friends begin ===
+        FriendServices.Instance?.Director?.CancelAutoAdvanceFromResult();
+        // === DCGO-CUSTOM:friends end ===
         if (!_endBattle)
         {
             _endBattle = true;
@@ -1454,16 +1457,6 @@ public class ContinuousController : MonoBehaviour
             yield break;
         }
 
-        Opening.instance.openingObject.SetActive(true);
-
-        //yield return StartCoroutine(Opening.instance.LoadingObject_Unload.StartLoading("Now Loading"));
-
-        //Camera camera1 = Camera.main;
-
-        //Destroy(camera1.gameObject);
-
-        //yield return null;
-
         isAI = false;
         // === DCGO-CUSTOM:ranked begin ===
         bool wasRanked = isRanked;
@@ -1475,10 +1468,20 @@ public class ContinuousController : MonoBehaviour
         bool tournamentNextGame = wasTournament && tournamentMatch != null && tournamentMatch.ShouldReloadNextGame;
         // === DCGO-CUSTOM:tournament end ===
         // === DCGO-CUSTOM:friends begin ===
-        bool wasFriendDuel = isFriendDuel;
+        // Room identity is authoritative — the flag can be cleared while still in an fd- room,
+        // which incorrectly routes into Room Match Init and leaves Ready locked (only Quit works).
+        bool wasFriendDuel = isFriendDuel || FriendKeys.IsInFriendDuelRoom();
+        if (wasFriendDuel)
+        {
+            isFriendDuel = true;
+            Opening.instance.battle?.roomManager?.Off();
+        }
+
         var friendDirector = wasFriendDuel ? FriendServices.EnsureExists().Director : null;
         bool friendNextGame = wasFriendDuel && friendDirector != null && friendDirector.ShouldReloadNextGame;
         // === DCGO-CUSTOM:friends end ===
+
+        Opening.instance.openingObject.SetActive(true);
 
         long random = RandomUtility.GetSecureRandom();
         GameRandom.Seed(random);
@@ -1511,9 +1514,10 @@ public class ContinuousController : MonoBehaviour
 
         yield return Resources.UnloadUnusedAssets();
 
-        // Rematch path owns its own loading + battle reload; avoid nested LoadingObject_Unload
-        // Start/End which can hang on WaitWhile(activeSelf).
-        if (!tournamentNextGame && !friendNextGame)
+        // Rematch / friend series teardown owns its own loading + battle reload; avoid nested
+        // LoadingObject_Unload Start/End which can hang on WaitWhile(activeSelf) and flash the
+        // Room Match lobby with Ready still locked (DoneStartBattle).
+        if (!tournamentNextGame && !friendNextGame && !wasFriendDuel)
         {
             yield return StartCoroutine(Opening.instance.LoadingObject_Unload.StartLoading("Now Loading"));
 
@@ -1604,8 +1608,16 @@ public class ContinuousController : MonoBehaviour
             // === DCGO-CUSTOM:tournament end ===
         }
         // === DCGO-CUSTOM:friends begin ===
-        else if (wasFriendDuel)
+        else if (wasFriendDuel || FriendKeys.IsInFriendDuelRoom())
         {
+            wasFriendDuel = true;
+            isFriendDuel = true;
+            if (friendDirector == null)
+            {
+                friendDirector = FriendServices.EnsureExists().Director;
+            }
+
+            friendNextGame = friendDirector != null && friendDirector.ShouldReloadNextGame;
             Debug.Log(friendNextGame
                 ? "Unload from Friend Duel (next game)"
                 : "Unload from Friend Duel (series end)");

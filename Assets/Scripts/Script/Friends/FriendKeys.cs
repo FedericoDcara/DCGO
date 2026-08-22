@@ -1,3 +1,5 @@
+using System;
+
 /// <summary>
 /// Photon property keys and constants for friend list / direct duel.
 /// </summary>
@@ -22,8 +24,42 @@ public static class FriendKeys
 
     public const string RoomNamePrefix = "fd-";
 
+    public static bool IsFriendDuelRoomName(string roomName)
+    {
+        return !string.IsNullOrEmpty(roomName) &&
+               roomName.StartsWith(RoomNamePrefix, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// True when the local client is in a friend-challenge Photon room (name or Mode prop).
+    /// Use this when ContinuousController.isFriendDuel may have been cleared mid-flow.
+    /// </summary>
+    public static bool IsInFriendDuelRoom()
+    {
+        if (!Photon.Pun.PhotonNetwork.InRoom || Photon.Pun.PhotonNetwork.CurrentRoom == null)
+        {
+            return false;
+        }
+
+        if (IsFriendDuelRoomName(Photon.Pun.PhotonNetwork.CurrentRoom.Name))
+        {
+            return true;
+        }
+
+        var props = Photon.Pun.PhotonNetwork.CurrentRoom.CustomProperties;
+        if (props != null &&
+            props.TryGetValue(ModeProperty, out object modeObj) &&
+            modeObj is string mode &&
+            string.Equals(mode, ModeFriend, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
     public const int MaxFriends = 50;
-    public const float FindFriendsPollSeconds = 5f;
+    public const float FindFriendsPollSeconds = 2f;
     public const float InviteTimeoutSeconds = 60f;
 
     public const string LocalFriendsPrefsKey = "DCGO_FriendList";
