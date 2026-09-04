@@ -41,6 +41,13 @@ public class NextPhaseButton : MonoBehaviourPunCallbacks
 
     public void OnClick()
     {
+        // === DCGO-CUSTOM:replay begin ===
+        if (GManager.instance != null && GManager.instance.IsReplay)
+        {
+            return;
+        }
+        // === DCGO-CUSTOM:replay end ===
+
         TurnStateMachine turnStateMachine = GManager.instance.turnStateMachine;
 
         if (!turnStateMachine.IsSelecting && !turnStateMachine.isExecuting && !turnStateMachine.isSecurityCehck)
@@ -89,6 +96,19 @@ public class NextPhaseButton : MonoBehaviourPunCallbacks
         oldActive = Button.gameObject.activeSelf;
 
         bool active = false;
+
+        // === DCGO-CUSTOM:replay begin ===
+        if (GManager.instance != null && GManager.instance.IsReplay)
+        {
+            Button.gameObject.SetActive(false);
+            if (Outline != null)
+            {
+                Outline.SetActive(false);
+            }
+
+            return;
+        }
+        // === DCGO-CUSTOM:replay end ===
 
         if (GManager.instance != null)
         {

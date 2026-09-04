@@ -560,7 +560,9 @@ public partial class CardEffectCommons
 
             int[] _jogressEvoRootsFrameIDs = new int[0];
 
-            if (owner.isYou || GManager.instance.IsAI)
+            // === DCGO-CUSTOM:replay begin ===
+            if ((owner.isYou && !GManager.instance.IsReplay) || GManager.instance.AllowAiDecisions)
+            // === DCGO-CUSTOM:replay end ===
             {
                 GManager.instance.selectJogressEffect.SetUp_SelectDigivolutionRoots
                                             (card: dnaTarget,

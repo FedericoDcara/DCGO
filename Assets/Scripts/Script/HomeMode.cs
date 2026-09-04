@@ -47,6 +47,9 @@ public class HomeMode : MonoBehaviour
         // === DCGO-CUSTOM:recovery begin ===
         AccountRecoveryPanel.HideIfOpen();
         // === DCGO-CUSTOM:recovery end ===
+        // === DCGO-CUSTOM:replay begin ===
+        MatchHistoryPanel.HideIfOpen();
+        // === DCGO-CUSTOM:replay end ===
     }
 
     public void SetUpHome()
@@ -94,6 +97,9 @@ public class HomeMode : MonoBehaviour
         // === DCGO-CUSTOM:recovery begin ===
         Opening.instance?.EnsureAccountButton();
         // === DCGO-CUSTOM:recovery end ===
+        // === DCGO-CUSTOM:replay begin ===
+        Opening.instance?.EnsureHistoryButton();
+        // === DCGO-CUSTOM:replay end ===
     }
 
     // === DCGO-CUSTOM:friends begin ===

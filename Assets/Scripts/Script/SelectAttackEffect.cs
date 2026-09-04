@@ -227,7 +227,9 @@ public class SelectAttackEffect : MonoBehaviourPunCallbacks
                 {
                     if (_attacker.CanAttack(_cardEffect, _withoutTap, _isVortex))
                     {
-                        if (_attacker.TopCard.Owner.isYou)
+                        // === DCGO-CUSTOM:replay begin ===
+                        if (_attacker.TopCard.Owner.isYou && !GManager.instance.IsReplay)
+                        // === DCGO-CUSTOM:replay end ===
                         {
                             #region Select Attack Target
                             if (!string.IsNullOrEmpty(_customMessage))
@@ -416,7 +418,9 @@ public class SelectAttackEffect : MonoBehaviourPunCallbacks
                             #endregion
 
                             #region AI
-                            if (GManager.instance.IsAI)
+                            // === DCGO-CUSTOM:replay begin ===
+                            if (GManager.instance.AllowAiDecisions)
+                            // === DCGO-CUSTOM:replay end ===
                             {
                                 List<Permanent> AttackcTargetCandidates = new List<Permanent>();
 

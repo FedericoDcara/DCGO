@@ -41,6 +41,18 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
 
         ContinuousController.instance.PlaySE(GManager.instance.StartBattleSE);
 
+        // === DCGO-CUSTOM:replay begin ===
+        MatchRecorder.BeginMatch();
+
+        // Arm RNG sync only after recording starts. Enabling CanSetRandom earlier let
+        // SetRandom RPCs complete, then a late DoneSetRandom=false left clients waiting forever.
+        if (ContinuousController.instance != null)
+        {
+            ContinuousController.instance.DoneSetRandom = false;
+            ContinuousController.instance.CanSetRandom = true;
+        }
+        // === DCGO-CUSTOM:replay end ===
+
         #region initialize parameter
         _canPlayTargetFrames = new bool[GManager.instance.You.fieldCardFrames.Count];
         _canDigivolves = new bool[GManager.instance.You.fieldCardFrames.Count];
@@ -50,49 +62,96 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
         _payingCosts = new int[GManager.instance.You.fieldCardFrames.Count];
         #endregion
 
-        #region AIモード
-        if (GManager.instance.IsAI)
+        // === DCGO-CUSTOM:replay begin ===
+        #region AIモード / Replay
+        bool isReplay = ContinuousController.instance != null && ContinuousController.instance.isReplay;
+        if (GManager.instance.IsAI || isReplay)
         {
-            ContinuousController.instance.isRandomMatch = true;
-
-            if (!PhotonNetwork.IsConnected)
+            if (!isReplay)
             {
-                yield return ContinuousController.instance.StartCoroutine(PhotonUtility.ConnectToMasterServerCoroutine());
+                ContinuousController.instance.isRandomMatch = true;
             }
 
-            yield return new WaitWhile(() => !PhotonNetwork.IsConnectedAndReady);
-
-            if (!PhotonNetwork.InLobby)
+            // Replay rewind often still has the previous solo room. Reuse it —
+            // calling JoinLobby while JoiningLobby/InRoom softlocks Photon.
+            if (isReplay && PhotonNetwork.InRoom)
             {
-                PhotonNetwork.JoinLobby();
+                Debug.Log("[Replay] Reusing existing Photon room for rewind.");
             }
-
-            yield return new WaitWhile(() => !PhotonNetwork.InLobby);
-
-            if (!PhotonNetwork.InRoom)
+            else
             {
-                //Setting up the room to be created
-                RoomOptions roomOptions = new RoomOptions
+                if (!PhotonNetwork.IsConnected)
                 {
-                    IsVisible = false,   //Make the room invisible in the lobby.
-                    IsOpen = false,      //Not Allow other players to enter the room
-                    PublishUserId = true,
+                    yield return ContinuousController.instance.StartCoroutine(PhotonUtility.ConnectToMasterServerCoroutine());
+                }
 
-                    MaxPlayers = 1
-                };
+                float connectWait = 0f;
+                while (!PhotonNetwork.IsConnectedAndReady && connectWait < 15f)
+                {
+                    connectWait += Time.unscaledDeltaTime;
+                    yield return null;
+                }
 
-                string RoomName = StringUtils.GeneratePassword_AlpahabetNum(50);
+                if (!PhotonNetwork.InRoom)
+                {
+                    var clientState = PhotonNetwork.NetworkClientState;
+                    if (!PhotonNetwork.InLobby &&
+                        clientState != Photon.Realtime.ClientState.JoiningLobby &&
+                        clientState != Photon.Realtime.ClientState.Authenticating &&
+                        clientState != Photon.Realtime.ClientState.ConnectingToMasterServer)
+                    {
+                        PhotonNetwork.JoinLobby();
+                    }
 
-                //Create Room
-                PhotonNetwork.CreateRoom(RoomName, roomOptions, null);
+                    float lobbyWait = 0f;
+                    while (!PhotonNetwork.InLobby && !PhotonNetwork.InRoom && lobbyWait < 15f)
+                    {
+                        lobbyWait += Time.unscaledDeltaTime;
+                        yield return null;
+                    }
+                }
+
+                if (!PhotonNetwork.InRoom)
+                {
+                    RoomOptions roomOptions = new RoomOptions
+                    {
+                        IsVisible = false,   //Make the room invisible in the lobby.
+                        IsOpen = false,      //Not Allow other players to enter the room
+                        PublishUserId = true,
+
+                        MaxPlayers = 1
+                    };
+
+                    string RoomName = StringUtils.GeneratePassword_AlpahabetNum(50);
+
+                    //Create Room
+                    PhotonNetwork.CreateRoom(RoomName, roomOptions, null);
+                }
+
+                float roomWait = 0f;
+                while (!PhotonNetwork.InRoom && roomWait < 15f)
+                {
+                    roomWait += Time.unscaledDeltaTime;
+                    yield return null;
+                }
             }
-
-            yield return new WaitWhile(() => !PhotonNetwork.InRoom);
         }
         #endregion
+        // === DCGO-CUSTOM:replay end ===
 
         #region gameContextの設定
         gameContext = new GameContext(GManager.instance.You, GManager.instance.Opponent);
+        // === DCGO-CUSTOM:replay begin ===
+        if (isReplay && ContinuousController.instance.ActiveReplay != null)
+        {
+            int viewerId = ContinuousController.instance.ActiveReplay.viewerPlayerId;
+            if (viewerId == 0 || viewerId == 1)
+            {
+                gameContext.You.PlayerID = viewerId;
+                gameContext.Opponent.PlayerID = 1 - viewerId;
+            }
+        }
+        // === DCGO-CUSTOM:replay end ===
         #endregion
 
         #region プレイヤー名設定
@@ -116,15 +175,28 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
         #endregion
 
         #region Save each player name
-        ApplyPlayerNamePlate(0, MasterPlayer);
-        ApplyPlayerNamePlate(1, nonMasterPlayer);
-
-        // === DCGO-CUSTOM:ranked begin ===
-        if (ContinuousController.instance != null && ContinuousController.instance.isRanked)
+        // === DCGO-CUSTOM:replay begin ===
+        if (isReplay && ContinuousController.instance.ActiveReplay != null)
         {
-            StartCoroutine(RefreshRankedNamePlatesLater(MasterPlayer, nonMasterPlayer));
+            var replay = ContinuousController.instance.ActiveReplay;
+            SetPlayerName(0, string.IsNullOrEmpty(replay.player0Name) ? "Player 0" : replay.player0Name);
+            SetPlayerName(1, string.IsNullOrEmpty(replay.player1Name) ? "Player 1" : replay.player1Name);
+            MatchRecorder.SetPlayerNames(replay.player0Name, replay.player1Name);
+            MatchRecorder.SetViewerPlayerId(replay.viewerPlayerId);
         }
-        // === DCGO-CUSTOM:ranked end ===
+        else
+        {
+            ApplyPlayerNamePlate(0, MasterPlayer);
+            ApplyPlayerNamePlate(1, nonMasterPlayer);
+
+            // === DCGO-CUSTOM:ranked begin ===
+            if (ContinuousController.instance != null && ContinuousController.instance.isRanked)
+            {
+                StartCoroutine(RefreshRankedNamePlatesLater(MasterPlayer, nonMasterPlayer));
+            }
+            // === DCGO-CUSTOM:ranked end ===
+        }
+        // === DCGO-CUSTOM:replay end ===
         #endregion
 
         #region Player name / ranked MMR for Photon clients
@@ -227,6 +299,26 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
         }
         // === DCGO-CUSTOM:ranked end ===
 
+        // === DCGO-CUSTOM:replay begin ===
+        void SetPlayerName(int _PlayerID, string _PlayerName)
+        {
+            Player player = gameContext.PlayerFromID(_PlayerID);
+            if (player == null)
+            {
+                return;
+            }
+
+            player.PlayerName = _PlayerName;
+
+            if (player.PlayerNameText != null)
+            {
+                player.PlayerNameText.transform.parent.gameObject.SetActive(true);
+                player.PlayerNameText.gameObject.SetActive(true);
+                player.PlayerNameText.text = player.PlayerName;
+            }
+        }
+        // === DCGO-CUSTOM:replay end ===
+
         void ApplyPlayerNamePlate(int playerId, Photon.Realtime.Player photonPlayer)
         {
             string rawName = ResolvePhotonPlayerName(photonPlayer);
@@ -313,13 +405,46 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
         #endregion
 
         #region 乱数列初期化
-        if (PhotonNetwork.IsMasterClient)
+        // === DCGO-CUSTOM:replay begin ===
+        if (isReplay && ContinuousController.instance.ActiveReplay != null)
+        {
+            long seed = ContinuousController.instance.ActiveReplay.GetRandomSeed();
+            GameRandom.Seed(seed);
+            ContinuousController.instance.LastBattleSeed = seed;
+            MatchRecorder.SetSeed(seed);
+            ContinuousController.instance.DoneSetRandom = true;
+            var replayMeta = ContinuousController.instance.ActiveReplay;
+            if (string.IsNullOrEmpty(replayMeta.randomSeedText))
+            {
+                Debug.LogError("[Replay] Replay file is missing randomSeedText (seed was never saved). " +
+                               "Playback will desync and freeze. Re-record the match after the seed-capture fix.");
+            }
+            Debug.Log($"[Replay] Seeded GameRandom from replay: {seed} snapshot={replayMeta.HasInitialLibrarySnapshot()}");
+        }
+        else if (PhotonNetwork.IsMasterClient)
         {
             ContinuousController.instance.GetComponent<PhotonView>().RPC("SetRandom", RpcTarget.All, RandomUtility.GetSecureRandom());
         }
 
-        yield return new WaitWhile(() => !ContinuousController.instance.DoneSetRandom);
-        ContinuousController.instance.DoneSetRandom = false;
+        if (!isReplay)
+        {
+            float seedWait = 0f;
+            while (!ContinuousController.instance.DoneSetRandom && seedWait < 20f)
+            {
+                seedWait += Time.unscaledDeltaTime;
+                yield return null;
+            }
+
+            if (!ContinuousController.instance.DoneSetRandom)
+            {
+                Debug.LogError("[Battle] Timed out waiting for SetRandom — match cannot start safely.");
+                yield break;
+            }
+
+            ContinuousController.instance.DoneSetRandom = false;
+            MatchRecorder.SetSeed(ContinuousController.instance.LastBattleSeed);
+        }
+        // === DCGO-CUSTOM:replay end ===
         #endregion
 
 
@@ -362,6 +487,29 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
 
     IEnumerator ResolveFirstPlayerCoroutine()
     {
+        // === DCGO-CUSTOM:replay begin ===
+        if (ContinuousController.instance != null &&
+            ContinuousController.instance.isReplay &&
+            ContinuousController.instance.ActiveReplay != null)
+        {
+            var replay = ContinuousController.instance.ActiveReplay;
+            // Keep RNG stream aligned with the live match.
+            if (replay.rolledFirstPlayer || replay.version < 2)
+            {
+                // v1 replays always took the coin-flip path for non-rematch games;
+                // rematch-only v1 may be slightly off, but room/random need this consume.
+                GameRandom.Range(0, 2);
+            }
+
+            int firstId = replay.firstPlayerId;
+            // StartGame sets FirstPlayer = NonTurnPlayer, then SwitchTurnPlayer makes them TurnPlayer.
+            gameContext.TurnPlayer = gameContext.PlayerFromID(1 - firstId);
+            MatchRecorder.SetFirstPlayer(firstId);
+            Debug.Log($"[Replay] First player forced to id={firstId} rolled={replay.rolledFirstPlayer}");
+            yield break;
+        }
+        // === DCGO-CUSTOM:replay end ===
+
         // === DCGO-CUSTOM:tournament begin ===
         string localId = TournamentState.EnsureLocalPlayerId();
         var cc = ContinuousController.instance;
@@ -438,6 +586,9 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
 
         // Game 1: shared GameRandom seed. Ignore leftover FirstPlayerId from a previous game.
         gameContext.TurnPlayer = gameContext.PlayerFromID(GameRandom.Range(0, 2));
+        // === DCGO-CUSTOM:replay begin ===
+        MatchRecorder.SetRolledFirstPlayer(true);
+        // === DCGO-CUSTOM:replay end ===
         if (!rematch)
         {
             int actor = ReadRoomFirstPlayerActor();
@@ -549,6 +700,13 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
 
         gameContext.FirstPlayer = gameContext.NonTurnPlayer;
         gameContext.NonTurnPlayer.FirstObject.SetActive(true);
+        // === DCGO-CUSTOM:replay begin ===
+        MatchRecorder.SetFirstPlayer(gameContext.FirstPlayer.PlayerID);
+        if (gameContext.You != null)
+        {
+            MatchRecorder.SetViewerPlayerId(gameContext.You.PlayerID);
+        }
+        // === DCGO-CUSTOM:replay end ===
 
         //yield return new WaitForSeconds(0.6f);
 
@@ -573,9 +731,11 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
                 GManager.instance.commandText.OpenCommandText("The opponent is selecting mulligan.");
             }
 
-            if (player.isYou)
+            // === DCGO-CUSTOM:replay begin ===
+            if (player.isYou && !GManager.instance.IsReplay)
+            // === DCGO-CUSTOM:replay end ===
             {
-                if (GManager.instance.isAuto && GManager.instance.IsAI)
+                if (GManager.instance.isAuto && GManager.instance.AllowAiDecisions)
                 {
                     SetRedraw(player.PlayerID, RandomUtility.IsSucceedProbability(0.5f));
                 }
@@ -622,7 +782,9 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
             else
             {
                 #region AI
-                if (GManager.instance.IsAI)
+                // === DCGO-CUSTOM:replay begin ===
+                if (GManager.instance.AllowAiDecisions)
+                // === DCGO-CUSTOM:replay end ===
                 {
                     bool doRedraw = false;
 
@@ -743,6 +905,10 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
         #region ログ追加
         PlayLog.OnAddLog?.Invoke($"\n-------------Turn: {TurnCount}-------------\n\nActive Phase:\n{gameContext.TurnPlayer.PlayerName}\n");
         #endregion
+
+        // === DCGO-CUSTOM:replay begin ===
+        MatchRecorder.RecordTurnMarker(TurnCount, gameContext.TurnPlayer.PlayerID);
+        // === DCGO-CUSTOM:replay end ===
 
         gameContext.TurnPhase = GameContext.phase.Active;
         Debug.Log($"{gameContext.TurnPlayer}:Start Turn({TurnCount}th Turn)");
@@ -915,7 +1081,9 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
 
             yield return new WaitWhile(() => !GManager.instance.showPhaseNotificationObject.isClose);
 
-            if (gameContext.TurnPlayer.isYou)
+            // === DCGO-CUSTOM:replay begin ===
+            if (gameContext.TurnPlayer.isYou && !GManager.instance.IsReplay)
+            // === DCGO-CUSTOM:replay end ===
             {
                 #region If hatching is possible
                 if (gameContext.TurnPlayer.CanHatch || !gameContext.TurnPlayer.CanMove)
@@ -953,7 +1121,7 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
                 }
                 #endregion
 
-                if (gameContext.TurnPlayer.isYou && GManager.instance.isAuto && GManager.instance.IsAI)
+                if (gameContext.TurnPlayer.isYou && GManager.instance.isAuto && GManager.instance.AllowAiDecisions)
                 {
                     gameContext.TurnPhase = GameContext.phase.Main;
                 }
@@ -964,7 +1132,9 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
                 //GManager.instance.commandText.OpenCommandText("BreedingPhase : The opponent is selecting the action.");
 
                 #region AI
-                if (GManager.instance.IsAI)
+                // === DCGO-CUSTOM:replay begin ===
+                if (GManager.instance.AllowAiDecisions)
+                // === DCGO-CUSTOM:replay end ===
                 {
                     bool doHatch = RandomUtility.IsSucceedProbability(0.85f);
 
@@ -1171,7 +1341,9 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
                     yield break;
                 }
 
-                if (!GManager.instance.IsAI || gameContext.TurnPlayer.isYou)
+                // === DCGO-CUSTOM:replay begin ===
+                if (!GManager.instance.IsAI || gameContext.TurnPlayer.isYou || GManager.instance.IsReplay)
+                // === DCGO-CUSTOM:replay end ===
                 {
                     if (gameContext.TurnPlayer.HasMainPhaseAction())
                     {
@@ -1180,7 +1352,9 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
                 }
 
                 #region AIモード
-                if (GManager.instance.IsAI && !gameContext.TurnPlayer.isYou)
+                // === DCGO-CUSTOM:replay begin ===
+                if (GManager.instance.AllowAiDecisions && !gameContext.TurnPlayer.isYou)
+                // === DCGO-CUSTOM:replay end ===
                 {
                     if (RandomUtility.IsSucceedProbability(0.99f))
                     {
@@ -1346,7 +1520,9 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
 
                 else
                 {
-                    if (gameContext.TurnPlayer.isYou && GManager.instance.isAuto && GManager.instance.IsAI)
+                    // === DCGO-CUSTOM:replay begin ===
+                    if (gameContext.TurnPlayer.isYou && GManager.instance.isAuto && GManager.instance.AllowAiDecisions)
+                    // === DCGO-CUSTOM:replay end ===
                     {
                         yield return ContinuousController.instance.StartCoroutine(GManager.instance.autoProcessing.EndTurnProcess());
                     }
@@ -1546,6 +1722,13 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
     #region Added main phase operations
     public IEnumerator SetMainPhase()
     {
+        // === DCGO-CUSTOM:replay begin ===
+        if (GManager.instance != null && GManager.instance.IsReplay)
+        {
+            yield break;
+        }
+        // === DCGO-CUSTOM:replay end ===
+
         if (gameContext.TurnPhase != GameContext.phase.Main)
         {
             yield break;
@@ -3455,6 +3638,10 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
     [PunRPC]
     public void Surrender(int loserPlayerID)
     {
+        // === DCGO-CUSTOM:replay begin ===
+        MatchRecorder.RecordSurrender(loserPlayerID);
+        // === DCGO-CUSTOM:replay end ===
+
         Player player = null;
 
         if (loserPlayerID == 0)
@@ -3499,6 +3686,32 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
         }
 
         endGame = true;
+
+        // === DCGO-CUSTOM:replay begin ===
+        // Finalize replay before EndGame filler selections are queued.
+        if (ContinuousController.instance == null || !ContinuousController.instance.isReplay)
+        {
+            int winnerId = Winner != null ? Winner.PlayerID : -1;
+            bool disconnect = Winner == null;
+            var replayData = MatchRecorder.Finalize(winnerId, Surrendered, disconnect, TurnCount);
+            if (replayData != null)
+            {
+                if (string.IsNullOrEmpty(replayData.player0Name) && gameContext != null)
+                {
+                    var p0 = gameContext.PlayerFromID(0);
+                    var p1 = gameContext.PlayerFromID(1);
+                    replayData.player0Name = p0 != null ? p0.PlayerName : "";
+                    replayData.player1Name = p1 != null ? p1.PlayerName : "";
+                }
+
+                MatchHistoryStore.SaveReplay(replayData);
+            }
+        }
+        else
+        {
+            MatchRecorder.Cancel();
+        }
+        // === DCGO-CUSTOM:replay end ===
 
         foreach (GameObject gb in GManager.instance.CloseWhenEndingGameObjects)
         {

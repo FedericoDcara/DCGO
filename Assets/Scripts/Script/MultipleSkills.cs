@@ -1,4 +1,4 @@
-﻿using Photon.Pun;
+using Photon.Pun;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -186,7 +186,9 @@ public class MultipleSkills : MonoBehaviourPunCallbacks
                     // Blast Digivolution
                     if (IsOnlyHandEffectStacked && IsOnlyOptionalEffectStacked && IsEachStackedEffectHasDistinctSourceCard)
                     {
-                        if (player.isYou)
+                        // === DCGO-CUSTOM:replay begin ===
+                        if (player.isYou && !GManager.instance.IsReplay)
+                        // === DCGO-CUSTOM:replay end ===
                         {
                             int skillIndex = 0;
 
@@ -253,7 +255,9 @@ public class MultipleSkills : MonoBehaviourPunCallbacks
                         else
                         {
                             #region AI
-                            if (GManager.instance.IsAI)
+                            // === DCGO-CUSTOM:replay begin ===
+                            if (GManager.instance.AllowAiDecisions)
+                            // === DCGO-CUSTOM:replay end ===
                             {
                                 SetTargetSkill(player.PlayerID, 0);
                             }
@@ -263,7 +267,9 @@ public class MultipleSkills : MonoBehaviourPunCallbacks
 
                     else
                     {
-                        if (player.isYou)
+                        // === DCGO-CUSTOM:replay begin ===
+                        if (player.isYou && !GManager.instance.IsReplay)
+                        // === DCGO-CUSTOM:replay end ===
                         {
                             int skillIndex = -1;
 
@@ -315,7 +321,9 @@ public class MultipleSkills : MonoBehaviourPunCallbacks
                             }
 
                             #region AI
-                            if (GManager.instance.IsAI)
+                            // === DCGO-CUSTOM:replay begin ===
+                            if (GManager.instance.AllowAiDecisions)
+                            // === DCGO-CUSTOM:replay end ===
                             {
                                 SetTargetSkill(player.PlayerID, 0);
                             }

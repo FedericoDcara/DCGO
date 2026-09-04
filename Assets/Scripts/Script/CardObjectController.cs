@@ -18,7 +18,69 @@ public class CardObjectController : MonoBehaviour
 
         yield return null;
 
+        // === DCGO-CUSTOM:replay begin ===
+        if (ContinuousController.instance != null &&
+            ContinuousController.instance.isReplay &&
+            ContinuousController.instance.ActiveReplay != null)
+        {
+            var replay = ContinuousController.instance.ActiveReplay;
+            var deck0 = new DeckData(replay.player0DeckCode);
+            var deck1 = new DeckData(replay.player1DeckCode);
+
+            GManager.instance.CardIndex = 0;
+
+            bool useSnapshot = replay.HasInitialLibrarySnapshot();
+            IEnumerable<CEntity_Base> lib0 = useSnapshot
+                ? ResolveEntities(replay.player0LibraryEntityIndices)
+                : RandomUtility.ShuffledDeckCards(deck0.DeckCards());
+            IEnumerable<CEntity_Base> digi0 = useSnapshot
+                ? ResolveEntities(replay.player0DigitamaEntityIndices)
+                : RandomUtility.ShuffledDeckCards(deck0.DigitamaDeckCards());
+            IEnumerable<CEntity_Base> lib1 = useSnapshot
+                ? ResolveEntities(replay.player1LibraryEntityIndices)
+                : RandomUtility.ShuffledDeckCards(deck1.DeckCards());
+            IEnumerable<CEntity_Base> digi1 = useSnapshot
+                ? ResolveEntities(replay.player1DigitamaEntityIndices)
+                : RandomUtility.ShuffledDeckCards(deck1.DigitamaDeckCards());
+
+            // Snapshot rebuilds skip Fisher-Yates; burn the same RNG draws so later rolls stay aligned.
+            if (useSnapshot)
+            {
+                RandomUtility.ShuffledDeckCards(deck0.DeckCards());
+                RandomUtility.ShuffledDeckCards(deck0.DigitamaDeckCards());
+                RandomUtility.ShuffledDeckCards(deck1.DeckCards());
+                RandomUtility.ShuffledDeckCards(deck1.DigitamaDeckCards());
+            }
+
+            foreach (CEntity_Base cEntity_Base in lib0)
+            {
+                GManager.instance.turnStateMachine.gameContext.PlayerFromID(0).LibraryCards.Add(CreateCardSource(0, cEntity_Base, false));
+            }
+
+            foreach (CEntity_Base cEntity_Base in digi0)
+            {
+                GManager.instance.turnStateMachine.gameContext.PlayerFromID(0).DigitamaLibraryCards.Add(CreateCardSource(0, cEntity_Base, false));
+            }
+
+            foreach (CEntity_Base cEntity_Base in lib1)
+            {
+                GManager.instance.turnStateMachine.gameContext.PlayerFromID(1).LibraryCards.Add(CreateCardSource(1, cEntity_Base, false));
+            }
+
+            foreach (CEntity_Base cEntity_Base in digi1)
+            {
+                GManager.instance.turnStateMachine.gameContext.PlayerFromID(1).DigitamaLibraryCards.Add(CreateCardSource(1, cEntity_Base, false));
+            }
+
+            MatchRecorder.SetDeckCodes(replay.player0DeckCode, replay.player1DeckCode);
+            yield break;
+        }
+        // === DCGO-CUSTOM:replay end ===
+
         DeckData RandomDeck = null;
+        // === DCGO-CUSTOM:replay begin ===
+        string recordedAiOpponentDeckCode = null;
+        // === DCGO-CUSTOM:replay end ===
 
         if (GManager.instance.IsAI)
         {
@@ -37,6 +99,9 @@ public class CardObjectController : MonoBehaviour
                 DeckData randomDeck = deckDatas[UnityEngine.Random.Range(0, deckDatas.Count)];
 
                 RandomDeck = new DeckData(randomDeck.GetThisDeckCode(), randomDeck.DeckID);
+                // === DCGO-CUSTOM:replay begin ===
+                recordedAiOpponentDeckCode = RandomDeck.GetThisDeckCode();
+                // === DCGO-CUSTOM:replay end ===
 
 #if UNITY_EDITOR && !UNITY_WINDOWS
                 foreach (DeckData deckData in ContinuousController.instance.DeckDatas)
@@ -44,6 +109,9 @@ public class CardObjectController : MonoBehaviour
                     if (deckData.IsValidDeckData())
                     {
                         RandomDeck = new DeckData(deckData.GetThisDeckCode(), deckData.DeckID);
+                        // === DCGO-CUSTOM:replay begin ===
+                        recordedAiOpponentDeckCode = RandomDeck.GetThisDeckCode();
+                        // === DCGO-CUSTOM:replay end ===
                         break;
                     }
                 }
@@ -90,6 +158,9 @@ public class CardObjectController : MonoBehaviour
                 }
 
                 RandomDeck = new DeckData(DeckData.GetDeckCode("サンプルデッキ", mainDeckCards, digitamaDeckCards, null));
+                // === DCGO-CUSTOM:replay begin ===
+                recordedAiOpponentDeckCode = RandomDeck.GetThisDeckCode();
+                // === DCGO-CUSTOM:replay end ===
             }
         }
 
@@ -376,7 +447,165 @@ public class CardObjectController : MonoBehaviour
         }
 
         #endregion
+
+        // === DCGO-CUSTOM:replay begin ===
+        RecordDeckCodesForMatch(MasterPlayer, nonMasterPlayer, recordedAiOpponentDeckCode);
+        RecordInitialLibrariesForMatch();
+        // === DCGO-CUSTOM:replay end ===
     }
+
+    // === DCGO-CUSTOM:replay begin ===
+    static void RecordInitialLibrariesForMatch()
+    {
+        var ctx = GManager.instance != null ? GManager.instance.turnStateMachine?.gameContext : null;
+        if (ctx == null)
+        {
+            return;
+        }
+
+        Player p0 = ctx.PlayerFromID(0);
+        Player p1 = ctx.PlayerFromID(1);
+        if (p0 == null || p1 == null)
+        {
+            return;
+        }
+
+        MatchRecorder.SetInitialLibraries(
+            ToEntityIndices(p0.LibraryCards),
+            ToEntityIndices(p0.DigitamaLibraryCards),
+            ToEntityIndices(p1.LibraryCards),
+            ToEntityIndices(p1.DigitamaLibraryCards));
+    }
+
+    static int[] ToEntityIndices(List<CardSource> cards)
+    {
+        if (cards == null || cards.Count == 0)
+        {
+            return Array.Empty<int>();
+        }
+
+        var indices = new int[cards.Count];
+        for (int i = 0; i < cards.Count; i++)
+        {
+            indices[i] = cards[i] != null ? cards[i].CardEntityIndex : 0;
+        }
+
+        return indices;
+    }
+
+    static List<CEntity_Base> ResolveEntities(int[] entityIndices)
+    {
+        var list = new List<CEntity_Base>();
+        if (entityIndices == null || ContinuousController.instance == null ||
+            ContinuousController.instance.SortedCardList == null)
+        {
+            return list;
+        }
+
+        for (int i = 0; i < entityIndices.Length; i++)
+        {
+            int entityIndex = entityIndices[i];
+            CEntity_Base entity = ContinuousController.instance.SortedCardList
+                .FirstOrDefault(e => e != null && e.CardIndex == entityIndex);
+            if (entity != null)
+            {
+                list.Add(entity);
+            }
+            else
+            {
+                Debug.LogWarning($"[Replay] Missing card entity index {entityIndex} while restoring library.");
+            }
+        }
+
+        return list;
+    }
+
+    static void RecordDeckCodesForMatch(
+        Photon.Realtime.Player masterPlayer,
+        Photon.Realtime.Player nonMasterPlayer,
+        string aiOpponentDeckCode)
+    {
+        string code0 = null;
+        string code1 = null;
+
+        if (!GManager.instance.IsAI)
+        {
+            code0 = TryGetDeckCode(masterPlayer);
+            code1 = TryGetDeckCode(nonMasterPlayer);
+        }
+        else
+        {
+            if (ContinuousController.instance.BattleDeckData != null &&
+                ContinuousController.instance.BattleDeckData.IsValidDeckData())
+            {
+                code0 = ContinuousController.instance.BattleDeckData.GetThisDeckCode();
+            }
+            else
+            {
+                foreach (DeckData deckData in ContinuousController.instance.DeckDatas)
+                {
+                    if (deckData.IsValidDeckData())
+                    {
+                        code0 = deckData.GetThisDeckCode();
+                        break;
+                    }
+                }
+            }
+
+            code1 = aiOpponentDeckCode;
+            if (string.IsNullOrEmpty(code1))
+            {
+                foreach (DeckData deckData in ContinuousController.instance.DeckDatas)
+                {
+                    if (deckData.IsValidDeckData())
+                    {
+                        code1 = deckData.GetThisDeckCode();
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (!string.IsNullOrEmpty(code0) && !string.IsNullOrEmpty(code1))
+        {
+            MatchRecorder.SetDeckCodes(code0, code1);
+        }
+
+        if (GManager.instance != null &&
+            GManager.instance.turnStateMachine != null &&
+            GManager.instance.turnStateMachine.gameContext != null &&
+            GManager.instance.turnStateMachine.gameContext.You != null)
+        {
+            MatchRecorder.SetViewerPlayerId(GManager.instance.turnStateMachine.gameContext.You.PlayerID);
+            var p0 = GManager.instance.turnStateMachine.gameContext.PlayerFromID(0);
+            var p1 = GManager.instance.turnStateMachine.gameContext.PlayerFromID(1);
+            MatchRecorder.SetPlayerNames(
+                p0 != null ? p0.PlayerName : "",
+                p1 != null ? p1.PlayerName : "");
+        }
+    }
+
+    static string TryGetDeckCode(Photon.Realtime.Player player)
+    {
+        if (player == null || player.CustomProperties == null)
+        {
+            return null;
+        }
+
+        if (player.CustomProperties.TryGetValue(ContinuousController.DeckDataPropertyKey, out object value) &&
+            value is string code &&
+            !string.IsNullOrEmpty(code))
+        {
+            var deckData = new DeckData(code);
+            if (deckData.IsValidDeckData())
+            {
+                return code;
+            }
+        }
+
+        return null;
+    }
+    // === DCGO-CUSTOM:replay end ===
     #endregion
 
     #region generate card

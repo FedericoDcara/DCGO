@@ -1457,6 +1457,18 @@ public class ContinuousController : MonoBehaviour
             yield break;
         }
 
+        // === DCGO-CUSTOM:replay begin ===
+        // Rewind uses ReloadReplayBattleCoroutine — never treat EndBattle as a seek restart.
+        bool wasReplay = isReplay;
+        bool returnToHistory = wasReplay;
+        if (wasReplay)
+        {
+            ReplaySeekTurn = 0;
+            ClearReplay();
+            ReturnToMatchHistoryAfterBattle = false;
+        }
+        // === DCGO-CUSTOM:replay end ===
+
         isAI = false;
         // === DCGO-CUSTOM:ranked begin ===
         bool wasRanked = isRanked;
@@ -1513,6 +1525,47 @@ public class ContinuousController : MonoBehaviour
         }
 
         yield return Resources.UnloadUnusedAssets();
+
+        // === DCGO-CUSTOM:replay begin ===
+        if (returnToHistory || wasReplay)
+        {
+            isRanked = false;
+            isRandomMatch = false;
+            isAI = false;
+            ClearReplay();
+            ReturnToMatchHistoryAfterBattle = false;
+
+            yield return StartCoroutine(Opening.instance.LoadingObject_Unload.StartLoading("Now Loading"));
+            Opening.instance.LoadingObject_light.gameObject.SetActive(false);
+
+            foreach (Camera camera in Opening.instance.openingCameras)
+            {
+                camera.gameObject.SetActive(true);
+            }
+
+            yield return ContinuousController.instance.StartCoroutine(PhotonUtility.SetPlayerName());
+            yield return new WaitWhile(() => GManager.instance != null);
+            Opening.instance.LoadingObject.gameObject.SetActive(false);
+            yield return StartCoroutine(Opening.instance.LoadingObject_Unload.EndLoading());
+            _endBattle = false;
+
+            Scene openingSceneAfterReplay = SceneManager.GetSceneByName("Opening");
+            if (openingSceneAfterReplay.IsValid())
+            {
+                SceneManager.SetActiveScene(openingSceneAfterReplay);
+            }
+
+            Opening.instance.home.SetUpHome();
+            MatchHistoryPanel.ShowFromHome();
+
+            if (Opening.instance.OpeningBGM != null && !Opening.instance.OpeningBGM.isPlaying)
+            {
+                Opening.instance.OpeningBGM.StartPlayBGM(Opening.instance.bgm);
+            }
+
+            yield break;
+        }
+        // === DCGO-CUSTOM:replay end ===
 
         // Rematch / friend series teardown owns its own loading + battle reload; avoid nested
         // LoadingObject_Unload Start/End which can hang on WaitWhile(activeSelf) and flash the
@@ -1796,76 +1849,117 @@ public class ContinuousController : MonoBehaviour
 
     public bool isAI { get; set; } = false;
 
+    // === DCGO-CUSTOM:replay begin ===
+    public bool isReplay { get; set; } = false;
+    public ReplayData ActiveReplay { get; set; }
+    public int ReplaySeekTurn { get; set; } = 0;
+    public bool ReturnToMatchHistoryAfterBattle { get; set; } = false;
+
+    public void ClearReplay()
+    {
+        isReplay = false;
+        ActiveReplay = null;
+        ReplaySeekTurn = 0;
+    }
+
+    /// <summary>
+    /// Reload only BattleScene for replay rewind. Avoids EndBattle/Opening softlocks.
+    /// Does not touch Opening.LoadingObject (inactive coroutines softlock rewind).
+    /// </summary>
+    public IEnumerator ReloadReplayBattleCoroutine(ReplayData data, int seekTurn)
+    {
+        if (data == null || !data.IsValid())
+        {
+            yield break;
+        }
+
+        if (_reloadingReplay)
+        {
+            Debug.LogWarning("[Replay] Rewind already in progress.");
+            yield break;
+        }
+
+        _reloadingReplay = true;
+        Time.timeScale = 1f;
+        isReplay = true;
+        isAI = true;
+        isRandomMatch = false;
+        isRanked = false;
+        isTournament = false;
+        isFriendDuel = false;
+        ActiveReplay = data;
+        ReplaySeekTurn = seekTurn;
+        ReturnToMatchHistoryAfterBattle = true;
+        BattleDeckData = new DeckData(data.viewerPlayerId == 0 ? data.player0DeckCode : data.player1DeckCode);
+
+        if (Opening.instance != null)
+        {
+            Opening.instance.openingObject.SetActive(false);
+            foreach (Camera camera in Opening.instance.openingCameras)
+            {
+                if (camera != null)
+                {
+                    camera.gameObject.SetActive(false);
+                }
+            }
+        }
+
+        for (int guard = 0; guard < 4 && IsBattleSceneLoaded(); guard++)
+        {
+            var unload = SceneManager.UnloadSceneAsync(BattleSceneName);
+            if (unload == null)
+            {
+                break;
+            }
+
+            yield return unload;
+        }
+
+        yield return null;
+        yield return null;
+        CleanStalePhotonViews();
+
+        float waitGone = 0f;
+        while ((IsBattleSceneLoaded() || GManager.instance != null) && waitGone < 3f)
+        {
+            waitGone += Time.unscaledDeltaTime;
+            yield return null;
+        }
+
+        var load = SceneManager.LoadSceneAsync(BattleSceneName, LoadSceneMode.Additive);
+        if (load != null)
+        {
+            yield return load;
+        }
+
+        float waitReady = 0f;
+        while (GManager.instance == null && waitReady < 10f)
+        {
+            waitReady += Time.unscaledDeltaTime;
+            yield return null;
+        }
+
+        _endBattle = false;
+        _reloadingReplay = false;
+        Debug.Log($"[Replay] Battle reloaded for seek turn={seekTurn}");
+    }
+
+    bool _reloadingReplay;
+
+    public void CancelReplayReload()
+    {
+        _reloadingReplay = false;
+        ReplaySeekTurn = 0;
+    }
+    // === DCGO-CUSTOM:replay end ===
+
     //Flag that the sharing of the random number sequence is over.
     public bool DoneSetRandom { get; set; } = false;
     public bool CanSetRandom { get; set; } = false;
-
-    // === DCGO-CUSTOM:chat begin ===
-    public const int BattleChatMaxLength = 120;
-    const float BattleChatCooldownSeconds = 0.5f;
-    float _lastBattleChatSendTime = -999f;
-
-    /// <summary>Raised on every client when a battle chat message is received (senderName, text, photonActorNumber).</summary>
-    public static event Action<string, string, int> OnBattleChatReceived;
-
-    /// <summary>
-    /// Send free-text chat to both players in the current PvP room. No-op for AI / offline / empty / rate-limited.
-    /// </summary>
-    public void SendBattleChat(string text)
-    {
-        if (isAI || !PhotonNetwork.InRoom)
-            return;
-
-        if (string.IsNullOrWhiteSpace(text))
-            return;
-
-        if (Time.unscaledTime - _lastBattleChatSendTime < BattleChatCooldownSeconds)
-            return;
-
-        string sanitized = SanitizeBattleChat(text);
-        if (string.IsNullOrEmpty(sanitized))
-            return;
-
-        _lastBattleChatSendTime = Time.unscaledTime;
-
-        string senderName = PlayerName;
-        if (string.IsNullOrEmpty(senderName))
-            senderName = "Player";
-
-        PhotonView view = GetComponent<PhotonView>();
-        if (view == null)
-            return;
-
-        view.RPC(nameof(ReceiveBattleChat), RpcTarget.All, senderName, sanitized);
-    }
-
-    public static string SanitizeBattleChat(string text)
-    {
-        if (string.IsNullOrEmpty(text))
-            return string.Empty;
-
-        string sanitized = text.Replace('\r', ' ').Replace('\n', ' ').Trim();
-        if (sanitized.Length > BattleChatMaxLength)
-            sanitized = sanitized.Substring(0, BattleChatMaxLength);
-
-        return sanitized;
-    }
-
-    [PunRPC]
-    public void ReceiveBattleChat(string senderName, string text, PhotonMessageInfo info)
-    {
-        string safeName = string.IsNullOrEmpty(senderName) ? "Player" : senderName.Trim();
-        if (safeName.Length > PlayerNameMaxLength && PlayerNameMaxLength > 0)
-            safeName = safeName.Substring(0, PlayerNameMaxLength);
-
-        string sanitized = SanitizeBattleChat(text);
-        if (string.IsNullOrEmpty(sanitized))
-            return;
-
-        int actorNumber = info.Sender != null ? info.Sender.ActorNumber : -1;
-        OnBattleChatReceived?.Invoke(safeName, sanitized, actorNumber);
-    }
-    // === DCGO-CUSTOM:chat end ===
+    // === DCGO-CUSTOM:replay begin ===
+    /// <summary>Last battle RNG seed applied via SetRandom (for replay recording).</summary>
+    public long LastBattleSeed { get; set; }
+    // === DCGO-CUSTOM:replay end ===
 
     [PunRPC]
     public void SetRandom(long random)
@@ -1925,7 +2019,11 @@ public class ContinuousController : MonoBehaviour
     {
         yield return new WaitWhile(() => !CanSetRandom);
 
+        // === DCGO-CUSTOM:replay begin ===
+        LastBattleSeed = random;
         GameRandom.Seed(random);
+        MatchRecorder.SetSeed(random);
+        // === DCGO-CUSTOM:replay end ===
         DoneSetRandom = true;
 
         Debug.Log($"random number sequence initialization, GameRandom.Seed:{random}");

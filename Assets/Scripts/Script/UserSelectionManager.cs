@@ -106,7 +106,9 @@ public class UserSelectionManager : MonoBehaviourPunCallbacks
         _selectPlayer = selectPlayer;
         _isLocal = IsLocal;
 
-        if (selectPlayer.isYou)
+        // === DCGO-CUSTOM:replay begin ===
+        if (selectPlayer.isYou && !GManager.instance.IsReplay)
+        // === DCGO-CUSTOM:replay end ===
         {
             GManager.instance.commandText.OpenCommandText(selectPlayerMessage);
 
@@ -124,8 +126,10 @@ public class UserSelectionManager : MonoBehaviourPunCallbacks
         {
             GManager.instance.commandText.OpenCommandText(notSelectPlayerMessage);
 
-            #region AIÉÇÅ[Éh
-            if (GManager.instance.IsAI)
+            #region AIÔøΩÔøΩÔøΩ[ÔøΩh
+            // === DCGO-CUSTOM:replay begin ===
+            if (GManager.instance.AllowAiDecisions)
+            // === DCGO-CUSTOM:replay end ===
             {
                 List<int> canSelectValue = new List<int>();
 
@@ -160,7 +164,9 @@ public class UserSelectionManager : MonoBehaviourPunCallbacks
         _selectPlayer = selectPlayer;
         _isLocal = IsLocal;
 
-        if (selectPlayer.isYou)
+        // === DCGO-CUSTOM:replay begin ===
+        if (selectPlayer.isYou && !GManager.instance.IsReplay)
+        // === DCGO-CUSTOM:replay end ===
         {
             GManager.instance.commandText.OpenCommandText(selectPlayerMessage);
 
@@ -178,8 +184,10 @@ public class UserSelectionManager : MonoBehaviourPunCallbacks
         {
             GManager.instance.commandText.OpenCommandText(notSelectPlayerMessage);
 
-            #region AIÉÇÅ[Éh
-            if (GManager.instance.IsAI)
+            #region AIÔøΩÔøΩÔøΩ[ÔøΩh
+            // === DCGO-CUSTOM:replay begin ===
+            if (GManager.instance.AllowAiDecisions)
+            // === DCGO-CUSTOM:replay end ===
             {
                 List<bool> canSelectValue = new List<bool>();
 
