@@ -19,14 +19,6 @@ public class ResultObject : MonoBehaviour
     {
         this.gameObject.SetActive(true);
 
-        if (GManager.instance != null && GManager.instance.battleChat != null)
-        {
-            // === DCGO-CUSTOM:chat begin ===
-            GManager.instance.battleChat.OffChat(playSe: false);
-            // === DCGO-CUSTOM:chat end ===
-            GManager.instance.battleChat.Clear();
-        }
-
         string log = "\nEnd Game";
 
         if (Winner != null)
@@ -42,16 +34,21 @@ public class ResultObject : MonoBehaviour
             ResultText.text = effectName;
         }
 
+        // === DCGO-CUSTOM:replay begin ===
+        bool isReplay = ContinuousController.instance != null && ContinuousController.instance.isReplay;
+        // === DCGO-CUSTOM:replay end ===
         // === DCGO-CUSTOM:ranked begin ===
-        bool isRanked = ContinuousController.instance != null && ContinuousController.instance.isRanked;
+        bool isRanked = ContinuousController.instance != null && ContinuousController.instance.isRanked && !isReplay;
         // === DCGO-CUSTOM:ranked end ===
         // === DCGO-CUSTOM:tournament begin ===
-        bool isTournament = ContinuousController.instance != null && ContinuousController.instance.isTournament;
+        bool isTournament = ContinuousController.instance != null && ContinuousController.instance.isTournament && !isReplay;
         // === DCGO-CUSTOM:tournament end ===
         // === DCGO-CUSTOM:friends begin ===
         bool isFriendDuel = ContinuousController.instance != null && ContinuousController.instance.isFriendDuel;
         // === DCGO-CUSTOM:friends end ===
-        bool skipRankedReport = false;
+        // === DCGO-CUSTOM:replay begin ===
+        bool skipRankedReport = isReplay;
+        // === DCGO-CUSTOM:replay end ===
 
         if (Winner == GManager.instance.You)
         {

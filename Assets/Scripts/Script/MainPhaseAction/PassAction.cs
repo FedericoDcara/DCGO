@@ -23,6 +23,8 @@ public class PassAction : MainPhaseAction
 
     public override byte[] Serialize()
     {
-        return null;
+        // === DCGO-CUSTOM:replay begin ===
+        return System.Array.Empty<byte>();
+        // === DCGO-CUSTOM:replay end ===
     }
 }

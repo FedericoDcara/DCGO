@@ -1,4 +1,4 @@
-﻿using Photon.Pun;
+using Photon.Pun;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -292,7 +292,9 @@ public class SelectPermanentEffect : MonoBehaviourPunCallbacks
 
             GManager.instance.turnStateMachine.IsSelecting = true;
 
-            if (_selectPlayer.isYou)
+            // === DCGO-CUSTOM:replay begin ===
+            if (_selectPlayer.isYou && !GManager.instance.IsReplay)
+            // === DCGO-CUSTOM:replay end ===
             {
                 #region Message display
                 if (!string.IsNullOrEmpty(_customMessage))
@@ -626,7 +628,9 @@ public class SelectPermanentEffect : MonoBehaviourPunCallbacks
                 #endregion
 
                 #region AI
-                if (GManager.instance.IsAI)
+                // === DCGO-CUSTOM:replay begin ===
+                if (GManager.instance.AllowAiDecisions)
+                // === DCGO-CUSTOM:replay end ===
                 {
                     List<Permanent> ValidCharas = new List<Permanent>();
 

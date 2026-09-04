@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using System.Linq;
@@ -377,7 +377,9 @@ public class SelectCardEffect : MonoBehaviourPunCallbacks
                 GManager.instance.turnStateMachine.gameContext.IsSecurityLooking = true;
             }
 
-            if (_selectPlayer.isYou)
+            // === DCGO-CUSTOM:replay begin ===
+            if (_selectPlayer.isYou && !GManager.instance.IsReplay)
+            // === DCGO-CUSTOM:replay end ===
             {
                 if ((_isDeckBottom && ContinuousController.instance.autoDeckBottomOrder)
                 || (_isDeckTop && ContinuousController.instance.autoDeckTopOrder))
@@ -582,7 +584,9 @@ public class SelectCardEffect : MonoBehaviourPunCallbacks
 
                 #region AI
 
-                if (GManager.instance.IsAI)
+                // === DCGO-CUSTOM:replay begin ===
+                if (GManager.instance.AllowAiDecisions)
+                // === DCGO-CUSTOM:replay end ===
                 {
                     AutoSelect();
                 }

@@ -477,7 +477,9 @@ public class SelectDigiXrosClass : MonoBehaviourPunCallbacks
 
                     else
                     {
-                        if (card.Owner.isYou)
+                        // === DCGO-CUSTOM:replay begin ===
+                        if (card.Owner.isYou && !GManager.instance.IsReplay)
+                        // === DCGO-CUSTOM:replay end ===
                         {
                             GManager.instance.commandText.OpenCommandText($"From which area will you select {element.selectMessage}?", digiXros: true);
 
@@ -525,7 +527,9 @@ public class SelectDigiXrosClass : MonoBehaviourPunCallbacks
                             GManager.instance.commandText.OpenCommandText($"The opponent is choosing from which area to select {element.selectMessage}.", digiXros: true);
 
                             #region AIモード
-                            if (GManager.instance.IsAI)
+                            // === DCGO-CUSTOM:replay begin ===
+                            if (GManager.instance.AllowAiDecisions)
+                            // === DCGO-CUSTOM:replay end ===
                             {
                                 List<int> indexes = new List<int>();
 
@@ -559,7 +563,9 @@ public class SelectDigiXrosClass : MonoBehaviourPunCallbacks
                             break;//Perform here where the value will only just have been set by the above routine
                         }
 
-                        if (!card.Owner.isYou && GManager.instance.IsAI)
+                        // === DCGO-CUSTOM:replay begin ===
+                        if (!card.Owner.isYou && GManager.instance.AllowAiDecisions)
+                        // === DCGO-CUSTOM:replay end ===
                         {
                             yield return _waitForSeconds0_3;
                         }

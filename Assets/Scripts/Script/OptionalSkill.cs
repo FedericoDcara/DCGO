@@ -57,7 +57,9 @@ public class OptionalSkill : MonoBehaviourPunCallbacks
         }
         #endregion
 
-        if (cardEffect.EffectSourceCard.Owner.isYou)
+        // === DCGO-CUSTOM:replay begin ===
+        if (cardEffect.EffectSourceCard.Owner.isYou && !GManager.instance.IsReplay)
+        // === DCGO-CUSTOM:replay end ===
         {
             Permanent permanent = cardEffect.EffectSourceCard.PermanentOfThisCard();
             List<FieldPermanentCard> highlightPermanents = new List<FieldPermanentCard>();
@@ -108,7 +110,9 @@ public class OptionalSkill : MonoBehaviourPunCallbacks
                 GManager.instance.commandText.OpenCommandText(waitingText);
             }
 
-            if (GManager.instance.IsAI)
+            // === DCGO-CUSTOM:replay begin ===
+            if (GManager.instance.AllowAiDecisions)
+            // === DCGO-CUSTOM:replay end ===
             {
                 SetUseOptional(player.PlayerID, RandomUtility.IsSucceedProbability(0.9f));
             }

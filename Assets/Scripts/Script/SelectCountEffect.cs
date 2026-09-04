@@ -113,7 +113,9 @@ public class SelectCountEffect : MonoBehaviourPunCallbacks
 
                 else
                 {
-                    if (_selectPlayer.isYou)
+                    // === DCGO-CUSTOM:replay begin ===
+                    if (_selectPlayer.isYou && !GManager.instance.IsReplay)
+                    // === DCGO-CUSTOM:replay end ===
                     {
                         if ((!_isDigivolutionCost && ContinuousController.instance.autoMaxCardCount && !_preferMin)
                         || (_isDigivolutionCost && ContinuousController.instance.autoMinDigivolutionCost && _preferMin))
@@ -147,7 +149,9 @@ public class SelectCountEffect : MonoBehaviourPunCallbacks
                     else
                     {
                         #region AI���[�h
-                        if (GManager.instance.IsAI)
+                        // === DCGO-CUSTOM:replay begin ===
+                        if (GManager.instance.AllowAiDecisions)
+                        // === DCGO-CUSTOM:replay end ===
                         {
                             int preferedNumber = _preferMin ? candidates.Min() : candidates.Max();
                             SetCount(_selectPlayer.PlayerID, preferedNumber);

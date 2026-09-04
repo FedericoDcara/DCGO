@@ -60,6 +60,9 @@ public class Opening : MonoBehaviour
     // === DCGO-CUSTOM:recovery begin ===
     Button AccountButton;
     // === DCGO-CUSTOM:recovery end ===
+    // === DCGO-CUSTOM:replay begin ===
+    Button HistoryButton;
+    // === DCGO-CUSTOM:replay end ===
 
     public OptionPanel optionPanel;
     public PatchNotes patchNotesPanel;
@@ -415,6 +418,12 @@ public class Opening : MonoBehaviour
             AccountButton.gameObject.SetActive(false);
         }
         // === DCGO-CUSTOM:recovery end ===
+        // === DCGO-CUSTOM:replay begin ===
+        if (HistoryButton != null)
+        {
+            HistoryButton.gameObject.SetActive(false);
+        }
+        // === DCGO-CUSTOM:replay end ===
     }
 
     public void OnModeButtons()
@@ -426,6 +435,9 @@ public class Opening : MonoBehaviour
         // === DCGO-CUSTOM:recovery begin ===
         EnsureAccountButton();
         // === DCGO-CUSTOM:recovery end ===
+        // === DCGO-CUSTOM:replay begin ===
+        EnsureHistoryButton();
+        // === DCGO-CUSTOM:replay end ===
     }
 
     public void CreateOnClickEffect()
@@ -778,6 +790,98 @@ public class Opening : MonoBehaviour
         lrt.offsetMax = Vector2.zero;
     }
     // === DCGO-CUSTOM:recovery end ===
+
+    // === DCGO-CUSTOM:replay begin ===
+    public void EnsureHistoryButton()
+    {
+        if (VerText == null && canvasRect == null)
+        {
+            return;
+        }
+
+        if (HistoryButton != null)
+        {
+            Transform expectedParent = VerText != null && VerText.transform.parent != null
+                ? VerText.transform.parent
+                : (canvasRect != null ? canvasRect.transform : null);
+            if (HistoryButton.transform.parent == expectedParent)
+            {
+                HistoryButton.gameObject.SetActive(true);
+                return;
+            }
+
+            Destroy(HistoryButton.gameObject);
+            HistoryButton = null;
+        }
+
+        Transform parent = VerText != null && VerText.transform.parent != null
+            ? VerText.transform.parent
+            : (canvasRect != null ? canvasRect.transform : null);
+        if (parent == null)
+        {
+            return;
+        }
+
+        Font font = VerText != null && VerText.font != null
+            ? VerText.font
+            : Resources.GetBuiltinResource<Font>("Arial.ttf");
+
+        var go = new GameObject("HistoryButton", typeof(RectTransform), typeof(Image), typeof(Button));
+        go.layer = VerText != null ? VerText.gameObject.layer : parent.gameObject.layer;
+        go.transform.SetParent(parent, false);
+
+        var rt = go.GetComponent<RectTransform>();
+        if (VerText != null)
+        {
+            var verRt = VerText.GetComponent<RectTransform>();
+            rt.localRotation = verRt.localRotation;
+            rt.localScale = Vector3.one;
+            rt.anchorMin = verRt.anchorMin;
+            rt.anchorMax = verRt.anchorMax;
+            rt.pivot = verRt.pivot;
+            // Above Account button stack
+            rt.anchoredPosition = verRt.anchoredPosition + new Vector2(-20f, 356f);
+        }
+        else
+        {
+            rt.anchorMin = new Vector2(1f, 0f);
+            rt.anchorMax = new Vector2(1f, 0f);
+            rt.pivot = new Vector2(1f, 0f);
+            rt.anchoredPosition = new Vector2(-40f, 356f);
+        }
+
+        rt.sizeDelta = new Vector2(200f, 56f);
+        go.GetComponent<Image>().color = new Color(0.25f, 0.55f, 0.35f, 0.95f);
+
+        HistoryButton = go.GetComponent<Button>();
+        HistoryButton.onClick.AddListener(() =>
+        {
+            PlayDecisionSE();
+            MatchHistoryPanel.ShowFromHome();
+        });
+
+        var labelGo = new GameObject("Label", typeof(RectTransform));
+        labelGo.transform.SetParent(go.transform, false);
+        var text = labelGo.AddComponent<Text>();
+        text.font = font;
+        text.fontSize = 22;
+        text.fontStyle = FontStyle.Bold;
+        text.alignment = TextAnchor.MiddleCenter;
+        text.color = Color.white;
+        text.text = LocalizeUtility.GetLocalizedString(EngMessage: "History", JpnMessage: "履歴");
+        text.raycastTarget = false;
+        if (VerText != null && VerText.material != null)
+        {
+            text.material = VerText.material;
+        }
+
+        var lrt = text.GetComponent<RectTransform>();
+        lrt.anchorMin = Vector2.zero;
+        lrt.anchorMax = Vector2.one;
+        lrt.offsetMin = Vector2.zero;
+        lrt.offsetMax = Vector2.zero;
+    }
+    // === DCGO-CUSTOM:replay end ===
 
     Text CreateVerSiblingText(string name, Transform parent, RectTransform verRt, float yOffset)
     {

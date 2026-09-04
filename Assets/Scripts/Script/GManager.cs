@@ -89,11 +89,6 @@ public class GManager : MonoBehaviourPun
     [Header("プレイログ")]
     public PlayLog playLog;
 
-    // === DCGO-CUSTOM:chat begin ===
-    [Header("バトルチャット")]
-    public BattleChatPanel battleChat;
-    // === DCGO-CUSTOM:chat end ===
-
     [Header("メモリー")]
     public MemoryObject memoryObject;
 
@@ -220,6 +215,14 @@ public class GManager : MonoBehaviourPun
 
     public bool IsAI { get; private set; } = false;
 
+    // === DCGO-CUSTOM:replay begin ===
+    public bool IsReplay =>
+        ContinuousController.instance != null && ContinuousController.instance.isReplay;
+
+    /// <summary>True when the bot may invent decisions (not during replay playback).</summary>
+    public bool AllowAiDecisions => IsAI && !IsReplay;
+    // === DCGO-CUSTOM:replay end ===
+
     public int CardIndex { get; set; } = 0;
 
     public bool ActivateShortcuts = false;
@@ -263,13 +266,17 @@ public class GManager : MonoBehaviourPun
 
         if (ContinuousController.instance != null)
         {
-            if (ContinuousController.instance.isAI)
+            // === DCGO-CUSTOM:replay begin ===
+            if (ContinuousController.instance.isAI || ContinuousController.instance.isReplay)
+            // === DCGO-CUSTOM:replay end ===
             {
                 IsAI = true;
             }
         }
 
-        if (!IsAI)
+        // === DCGO-CUSTOM:replay begin ===
+        if (!IsAI || IsReplay)
+        // === DCGO-CUSTOM:replay end ===
         {
             isAuto = false;
         }
@@ -280,10 +287,6 @@ public class GManager : MonoBehaviourPun
 
         playLog.Init();
 
-        // === DCGO-CUSTOM:chat begin ===
-        EnsureBattleChat();
-        // === DCGO-CUSTOM:chat end ===
-
         hideCannotSelectObject.Init();
 
         ChangeBackground();
@@ -291,6 +294,16 @@ public class GManager : MonoBehaviourPun
         yield return StartCoroutine(Init());
 
         StartCoroutine(turnStateMachine.Init());
+
+        // === DCGO-CUSTOM:replay begin ===
+        if (IsReplay)
+        {
+            var driverGo = new GameObject("ReplayDriver");
+            driverGo.transform.SetParent(transform, false);
+            driverGo.AddComponent<ReplayDriver>();
+            driverGo.AddComponent<ReplayControls>();
+        }
+        // === DCGO-CUSTOM:replay end ===
 
         StartCoroutine(CheckDisconnect());
 
@@ -301,9 +314,11 @@ public class GManager : MonoBehaviourPun
 
         Debug.Log("Battle Initialization");
 
+        // === DCGO-CUSTOM:replay begin ===
+        // CanSetRandom is armed in TurnStateMachine.Init after MatchRecorder.BeginMatch
+        // so late DoneSetRandom=false cannot strand clients waiting on SetRandom.
         yield return new WaitWhile(() => ContinuousController.instance == null);
-
-        ContinuousController.instance.CanSetRandom = true;
+        // === DCGO-CUSTOM:replay end ===
     }
 
     protected virtual void OnDestroy()
@@ -323,46 +338,6 @@ public class GManager : MonoBehaviourPun
     {
         ContinuousController.instance.PlaySE(CancelSE);
     }
-
-    // === DCGO-CUSTOM:chat begin ===
-    void EnsureBattleChat()
-    {
-        bool enableChat = ContinuousController.instance != null
-            && !ContinuousController.instance.isAI
-            && !IsAI
-            && PhotonNetwork.InRoom;
-
-        if (!enableChat)
-        {
-            if (battleChat != null)
-            {
-                battleChat.Clear();
-                battleChat.OffChat(playSe: false);
-                battleChat.gameObject.SetActive(false);
-            }
-            return;
-        }
-
-        if (battleChat == null)
-        {
-            BattleChatPanel prefab = Resources.Load<BattleChatPanel>("BattleChatPanel");
-            if (prefab != null && canvas != null)
-            {
-                battleChat = Instantiate(prefab, canvas.transform);
-            }
-            else if (canvas != null)
-            {
-                GameObject go = new GameObject("BattleChatPanel", typeof(RectTransform));
-                go.layer = 5;
-                go.transform.SetParent(canvas.transform, false);
-                battleChat = go.AddComponent<BattleChatPanel>();
-            }
-        }
-
-        if (battleChat != null)
-            battleChat.Init();
-    }
-    // === DCGO-CUSTOM:chat end ===
 
     public async void ChangeBackground()
     {
@@ -533,6 +508,13 @@ public class GManager : MonoBehaviourPun
 
     public void OnClickSurrenderButton()
     {
+        // === DCGO-CUSTOM:replay begin ===
+        if (IsReplay)
+        {
+            return;
+        }
+        // === DCGO-CUSTOM:replay end ===
+
         if (turnStateMachine != null)
         {
             if (turnStateMachine.endGame)
