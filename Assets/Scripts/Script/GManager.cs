@@ -217,10 +217,13 @@ public class GManager : MonoBehaviourPun
 
     // === DCGO-CUSTOM:replay begin ===
     public bool IsReplay =>
-        ContinuousController.instance != null && ContinuousController.instance.isReplay;
+        ContinuousController.instance != null &&
+        (ContinuousController.instance.isReplay || ContinuousController.instance.isTournamentSpectator);
 
     /// <summary>True when the bot may invent decisions (not during replay playback).</summary>
-    public bool AllowAiDecisions => IsAI && !IsReplay;
+    public bool AllowAiDecisions => IsAI && ContinuousController.instance != null &&
+                                    ContinuousController.instance.isReplay == false &&
+                                    !ContinuousController.instance.isTournamentSpectator;
     // === DCGO-CUSTOM:replay end ===
 
     public int CardIndex { get; set; } = 0;
@@ -296,12 +299,18 @@ public class GManager : MonoBehaviourPun
         StartCoroutine(turnStateMachine.Init());
 
         // === DCGO-CUSTOM:replay begin ===
-        if (IsReplay)
+        if (ContinuousController.instance != null && ContinuousController.instance.isReplay)
         {
             var driverGo = new GameObject("ReplayDriver");
             driverGo.transform.SetParent(transform, false);
             driverGo.AddComponent<ReplayDriver>();
             driverGo.AddComponent<ReplayControls>();
+        }
+        else if (ContinuousController.instance != null && ContinuousController.instance.isSpectatorCatchUp)
+        {
+            var driverGo = new GameObject("SpectatorCatchUpDriver");
+            driverGo.transform.SetParent(transform, false);
+            driverGo.AddComponent<SpectatorCatchUpDriver>();
         }
         // === DCGO-CUSTOM:replay end ===
 
@@ -388,7 +397,11 @@ public class GManager : MonoBehaviourPun
                 break;
             }
 
-            if (PhotonNetwork.CurrentRoom != null && BattleReconnectService.CountActivePlayers() < 2)
+            int activeFighters = ContinuousController.instance != null &&
+                                 ContinuousController.instance.isTournament
+                ? TournamentKeys.CountActiveCompetitors()
+                : BattleReconnectService.CountActivePlayers();
+            if (PhotonNetwork.CurrentRoom != null && activeFighters < 2)
             {
                 if (BattleReconnectService.HasInactiveOpponent())
                 {

@@ -75,6 +75,61 @@ public class CardObjectController : MonoBehaviour
             MatchRecorder.SetDeckCodes(replay.player0DeckCode, replay.player1DeckCode);
             yield break;
         }
+
+        if (ContinuousController.instance != null &&
+            ContinuousController.instance.isSpectatorCatchUp &&
+            ContinuousController.instance.ActiveCatchUpReplay != null)
+        {
+            var replay = ContinuousController.instance.ActiveCatchUpReplay;
+            var deck0 = new DeckData(replay.player0DeckCode);
+            var deck1 = new DeckData(replay.player1DeckCode);
+
+            GManager.instance.CardIndex = 0;
+
+            bool useSnapshot = replay.HasInitialLibrarySnapshot();
+            IEnumerable<CEntity_Base> lib0 = useSnapshot
+                ? ResolveEntities(replay.player0LibraryEntityIndices)
+                : RandomUtility.ShuffledDeckCards(deck0.DeckCards());
+            IEnumerable<CEntity_Base> digi0 = useSnapshot
+                ? ResolveEntities(replay.player0DigitamaEntityIndices)
+                : RandomUtility.ShuffledDeckCards(deck0.DigitamaDeckCards());
+            IEnumerable<CEntity_Base> lib1 = useSnapshot
+                ? ResolveEntities(replay.player1LibraryEntityIndices)
+                : RandomUtility.ShuffledDeckCards(deck1.DeckCards());
+            IEnumerable<CEntity_Base> digi1 = useSnapshot
+                ? ResolveEntities(replay.player1DigitamaEntityIndices)
+                : RandomUtility.ShuffledDeckCards(deck1.DigitamaDeckCards());
+
+            if (useSnapshot)
+            {
+                RandomUtility.ShuffledDeckCards(deck0.DeckCards());
+                RandomUtility.ShuffledDeckCards(deck0.DigitamaDeckCards());
+                RandomUtility.ShuffledDeckCards(deck1.DeckCards());
+                RandomUtility.ShuffledDeckCards(deck1.DigitamaDeckCards());
+            }
+
+            foreach (CEntity_Base cEntity_Base in lib0)
+            {
+                GManager.instance.turnStateMachine.gameContext.PlayerFromID(0).LibraryCards.Add(CreateCardSource(0, cEntity_Base, false));
+            }
+
+            foreach (CEntity_Base cEntity_Base in digi0)
+            {
+                GManager.instance.turnStateMachine.gameContext.PlayerFromID(0).DigitamaLibraryCards.Add(CreateCardSource(0, cEntity_Base, false));
+            }
+
+            foreach (CEntity_Base cEntity_Base in lib1)
+            {
+                GManager.instance.turnStateMachine.gameContext.PlayerFromID(1).LibraryCards.Add(CreateCardSource(1, cEntity_Base, false));
+            }
+
+            foreach (CEntity_Base cEntity_Base in digi1)
+            {
+                GManager.instance.turnStateMachine.gameContext.PlayerFromID(1).DigitamaLibraryCards.Add(CreateCardSource(1, cEntity_Base, false));
+            }
+
+            yield break;
+        }
         // === DCGO-CUSTOM:replay end ===
 
         DeckData RandomDeck = null;

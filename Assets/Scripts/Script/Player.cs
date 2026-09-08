@@ -174,6 +174,11 @@ public class Player : MonoBehaviour
     public void QueueMainPhaseAction(MainPhaseAction action)
     {
         // === DCGO-CUSTOM:replay begin ===
+        if (SpectatorInputGate.BlocksNetworkInput)
+        {
+            return;
+        }
+
         MatchRecorder.RecordMainPhaseAction(PlayerID, action);
         // === DCGO-CUSTOM:replay end ===
         mainPhaseActions.Enqueue(action);
@@ -202,6 +207,11 @@ public class Player : MonoBehaviour
     public void QueuePlayerSelection(IPlayerSelection selection)
     {
         // === DCGO-CUSTOM:replay begin ===
+        if (SpectatorInputGate.BlocksNetworkInput)
+        {
+            return;
+        }
+
         MatchRecorder.RecordPlayerSelection(PlayerID, selection);
         // === DCGO-CUSTOM:replay end ===
         _playerSelectionQueue.Enqueue(selection);

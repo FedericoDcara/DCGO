@@ -138,14 +138,19 @@ public class ResultObject : MonoBehaviour
         // === DCGO-CUSTOM:tournament begin ===
         if (isTournament && !GManager.instance.IsAI)
         {
+            bool isSpectator = ContinuousController.instance != null &&
+                               ContinuousController.instance.isTournamentSpectator;
             bool? localWon = null;
-            if (Winner == GManager.instance.You)
+            if (!isSpectator)
             {
-                localWon = true;
-            }
-            else if (Winner != null)
-            {
-                localWon = false;
+                if (Winner == GManager.instance.You)
+                {
+                    localWon = true;
+                }
+                else if (Winner != null)
+                {
+                    localWon = false;
+                }
             }
 
             bool disconnect = Winner == null && !skipRankedReport;

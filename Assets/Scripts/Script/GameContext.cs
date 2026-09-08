@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using Photon.Pun;
@@ -129,6 +129,13 @@ public class GameContext
     #region Player ID Assignment
     public void SetPlayerID()
     {
+        var cc = ContinuousController.instance;
+        if (cc != null && cc.isTournamentSpectator && cc.TournamentState != null)
+        {
+            AssignSpectatorPlayerIds(cc);
+            return;
+        }
+
         if (PhotonNetwork.IsMasterClient)
         {
             You.PlayerID = 0;
@@ -140,6 +147,91 @@ public class GameContext
             You.PlayerID = 1;
             Opponent.PlayerID = 0;
         }
+    }
+
+    void AssignSpectatorPlayerIds(ContinuousController cc)
+    {
+        // Seat 0 = match-room master competitor, seat 1 = the other competitor.
+        // POV defaults to userIdA; map that bracket side onto the Photon seats.
+        var state = cc.TournamentState;
+        string viewerId = cc.TournamentSpectateViewerUserId;
+        var match = FindSpectateMatch(state, viewerId);
+        if (match == null)
+        {
+            You.PlayerID = 0;
+            Opponent.PlayerID = 1;
+            return;
+        }
+
+        if (string.IsNullOrEmpty(viewerId))
+        {
+            viewerId = match.userIdA;
+            cc.TournamentSpectateViewerUserId = viewerId;
+        }
+
+        int viewerSeat = ResolveCompetitorSeat(viewerId);
+        if (viewerSeat < 0)
+        {
+            // Fallback: A → seat of master if we cannot resolve yet.
+            viewerSeat = 0;
+        }
+
+        You.PlayerID = viewerSeat;
+        Opponent.PlayerID = 1 - viewerSeat;
+    }
+
+    static TournamentMatchSlot FindSpectateMatch(TournamentState state, string viewerId)
+    {
+        if (state == null)
+        {
+            return null;
+        }
+
+        if (!string.IsNullOrEmpty(viewerId))
+        {
+            var byViewer = state.FindActiveMatchFor(viewerId);
+            if (byViewer != null)
+            {
+                return byViewer;
+            }
+        }
+
+        var live = state.ListSpectatableMatches();
+        return live.Count > 0 ? live[0] : null;
+    }
+
+    static int ResolveCompetitorSeat(string userId)
+    {
+        if (string.IsNullOrEmpty(userId) || !PhotonNetwork.InRoom)
+        {
+            return -1;
+        }
+
+        var master = TournamentKeys.FindCompetitorMaster();
+        if (master != null && TournamentState.ReadPlayerId(master) == userId)
+        {
+            return 0;
+        }
+
+        foreach (var player in PhotonNetwork.PlayerList)
+        {
+            if (!TournamentKeys.IsCompetitor(player))
+            {
+                continue;
+            }
+
+            if (master != null && player.ActorNumber == master.ActorNumber)
+            {
+                continue;
+            }
+
+            if (TournamentState.ReadPlayerId(player) == userId)
+            {
+                return 1;
+            }
+        }
+
+        return -1;
     }
     #endregion
 

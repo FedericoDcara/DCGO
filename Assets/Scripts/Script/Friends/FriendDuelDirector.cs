@@ -174,15 +174,16 @@ public class FriendDuelDirector : MonoBehaviour
             return;
         }
 
-        var hash = PhotonNetwork.CurrentRoom.CustomProperties ?? new Hashtable();
-        hash[FriendKeys.SeriesWinsAProperty] = SeriesWinsA;
-        hash[FriendKeys.SeriesWinsBProperty] = SeriesWinsB;
-        hash[FriendKeys.GameIndexProperty] = GameIndex;
-        hash[FriendKeys.WinsToTakeProperty] = WinsToTake;
-        hash[FriendKeys.UserIdAProperty] = UserIdA ?? "";
-        hash[FriendKeys.UserIdBProperty] = UserIdB ?? "";
-        hash[FriendKeys.LastLoserProperty] = LastLoserUserId ?? "";
-        PhotonNetwork.CurrentRoom.SetCustomProperties(hash);
+        PhotonNetwork.CurrentRoom.SetCustomProperties(new Hashtable
+        {
+            { FriendKeys.SeriesWinsAProperty, SeriesWinsA },
+            { FriendKeys.SeriesWinsBProperty, SeriesWinsB },
+            { FriendKeys.GameIndexProperty, GameIndex },
+            { FriendKeys.WinsToTakeProperty, WinsToTake },
+            { FriendKeys.UserIdAProperty, UserIdA ?? "" },
+            { FriendKeys.UserIdBProperty, UserIdB ?? "" },
+            { FriendKeys.LastLoserProperty, LastLoserUserId ?? "" },
+        });
     }
 
     public void NotifyGameEnded(bool? localWon, bool disconnect, bool draw)
@@ -367,13 +368,20 @@ public class FriendDuelDirector : MonoBehaviour
         }
 
         _autoAdvancingResult = false;
+        Bo3FirstPlayerChoice.Hide();
     }
 
     IEnumerator AutoAdvanceFromResultCoroutine()
     {
         _autoAdvancingResult = true;
+        float start = Time.unscaledTime;
 
-        float shown = 0f;
+        if (ShouldReloadNextGame)
+        {
+            yield return WaitForLoserFirstPlayerChoice();
+        }
+
+        float shown = Time.unscaledTime - start;
         const float minShowSeconds = 2f;
         while (shown < minShowSeconds)
         {
@@ -397,6 +405,7 @@ public class FriendDuelDirector : MonoBehaviour
             }
         }
 
+        Bo3FirstPlayerChoice.Hide();
         _autoAdvanceFromResult = null;
         _autoAdvancingResult = false;
 
@@ -426,6 +435,55 @@ public class FriendDuelDirector : MonoBehaviour
         {
             ContinuousController.instance.EndBattle();
         }
+    }
+
+    IEnumerator WaitForLoserFirstPlayerChoice()
+    {
+        SyncFromRoom();
+        string localId = FriendListService.LocalPlayFabId() ?? PhotonNetwork.LocalPlayer?.UserId;
+        string loserId = LastLoserUserId;
+        float waitedLoser = 0f;
+        while (string.IsNullOrEmpty(loserId) && waitedLoser < 4f)
+        {
+            if (PhotonNetwork.InRoom &&
+                PhotonNetwork.CurrentRoom.CustomProperties.TryGetValue(FriendKeys.LastLoserProperty, out object loserObj) &&
+                loserObj is string roomLoser &&
+                !string.IsNullOrEmpty(roomLoser))
+            {
+                loserId = roomLoser;
+                LastLoserUserId = roomLoser;
+                break;
+            }
+
+            waitedLoser += Time.unscaledDeltaTime;
+            yield return null;
+        }
+
+        if (string.IsNullOrEmpty(loserId))
+        {
+            yield break;
+        }
+
+        int gameIndex = GameIndex;
+        if (PhotonNetwork.InRoom &&
+            PhotonNetwork.CurrentRoom.CustomProperties.TryGetValue(FriendKeys.GameIndexProperty, out object gObj))
+        {
+            try
+            {
+                gameIndex = System.Math.Max(gameIndex, System.Convert.ToInt32(gObj));
+            }
+            catch
+            {
+                // keep local GameIndex
+            }
+        }
+
+        yield return Bo3FirstPlayerChoice.WaitForChoice(
+            FriendKeys.NextFirstUserIdProperty,
+            FriendKeys.NextFirstGameIndexProperty,
+            gameIndex,
+            localId,
+            loserId);
     }
 
     static void SetLocalOnResult(bool onResult)
@@ -492,6 +550,12 @@ public class FriendDuelDirector : MonoBehaviour
         }
 
         yield return StartBattleCoroutine(isRematch: true);
+        if (!_startedBattleOk && PhotonNetwork.InRoom && BattleReconnectService.CountActivePlayers() >= 2)
+        {
+            Debug.LogWarning("[Friends] Rematch StartBattle did not load — retrying once");
+            yield return StartBattleCoroutine(isRematch: true);
+        }
+
         if (!_startedBattleOk)
         {
             yield return EndSeriesToHomeCoroutine();
@@ -611,7 +675,8 @@ public class FriendDuelDirector : MonoBehaviour
         if (PhotonNetwork.IsMasterClient && PhotonNetwork.InRoom)
         {
             ApplyFirstPlayerProperty(isRematch);
-            PhotonNetwork.CurrentRoom.IsOpen = false;
+            // Keep rematch rooms joinable so the slower client can still enter game 3.
+            PhotonNetwork.CurrentRoom.IsOpen = isRematch;
             PhotonNetwork.CurrentRoom.IsVisible = false;
         }
 
@@ -660,20 +725,24 @@ public class FriendDuelDirector : MonoBehaviour
         int firstPlayerId = -1;
         string loserId = LastLoserUserId;
 
-        if (isRematch && !string.IsNullOrEmpty(loserId))
+        string firstUserId = Bo3FirstPlayerChoice.ReadChosenFirstUserId(
+            FriendKeys.NextFirstUserIdProperty,
+            FriendKeys.NextFirstGameIndexProperty,
+            GameIndex);
+        if (string.IsNullOrEmpty(firstUserId))
         {
-            foreach (var p in PhotonNetwork.PlayerList)
-            {
-                if (ReadPlayerId(p) == loserId)
-                {
-                    firstPlayerId = p.ActorNumber;
-                    break;
-                }
-            }
+            firstUserId = loserId;
         }
 
-        var hash = PhotonNetwork.CurrentRoom.CustomProperties ?? new Hashtable();
-        hash[DataBase.FirstPlayerKey] = firstPlayerId;
+        if (isRematch && !string.IsNullOrEmpty(firstUserId))
+        {
+            firstPlayerId = Bo3FirstPlayerChoice.ActorNumberForUserId(firstUserId);
+        }
+
+        var hash = new Hashtable
+        {
+            { DataBase.FirstPlayerKey, firstPlayerId },
+        };
         if (!string.IsNullOrEmpty(loserId))
         {
             hash[FriendKeys.LastLoserProperty] = loserId;

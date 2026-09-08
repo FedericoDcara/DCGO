@@ -17,6 +17,13 @@ public static class MatchRecorder
 
     public static bool IsRecording => _recording && !_finalized && _current != null;
 
+    /// <summary>Changes every game so a spectator stream can tell recordings apart.</summary>
+    public static int SessionId { get; private set; }
+
+    /// <summary>Inputs recorded so far in this game (the spectator stream index).</summary>
+    public static int RecordedEventCount =>
+        IsRecording && _current.events != null ? _current.events.Count : 0;
+
     public static void BeginMatch()
     {
         if (IsReplaySession())
@@ -27,6 +34,7 @@ public static class MatchRecorder
             return;
         }
 
+        SessionId++;
         _current = new ReplayData
         {
             version = ReplayData.CurrentVersion,
@@ -200,6 +208,10 @@ public static class MatchRecorder
             return null;
         }
 
+        // Push the last inputs (especially surrender) before recording stops.
+        // Otherwise spectators never see the game end and freeze on the old board.
+        SpectatorCatchUpTransfer.FlushAndEndAll();
+
         _finalized = true;
         _recording = false;
 
@@ -244,9 +256,110 @@ public static class MatchRecorder
         // Keep _stashedSeed — next BeginMatch / battle may still need it.
     }
 
+    /// <summary>
+    /// Deep-copies the in-progress recording for mid-game spectator catch-up.
+    /// Does not stop recording. Returns null until seed + post-shuffle libraries exist.
+    /// </summary>
+    public static ReplayData ExportPartialClone()
+    {
+        if (!IsRecording || _current == null)
+        {
+            return null;
+        }
+
+        if (!_hasSeed && !_hasStashedSeed)
+        {
+            return null;
+        }
+
+        if (!_current.HasInitialLibrarySnapshot())
+        {
+            return null;
+        }
+
+        if (string.IsNullOrEmpty(_current.player0DeckCode) ||
+            string.IsNullOrEmpty(_current.player1DeckCode))
+        {
+            return null;
+        }
+
+        if (_hasSeed)
+        {
+            _current.SetRandomSeed(_pendingSeed);
+        }
+        else if (_hasStashedSeed)
+        {
+            _current.SetRandomSeed(_stashedSeed);
+        }
+
+        if (_current.GetRandomSeed() == 0 && string.IsNullOrEmpty(_current.randomSeedText))
+        {
+            return null;
+        }
+
+        try
+        {
+            string json = JsonUtility.ToJson(_current);
+            var clone = JsonUtility.FromJson<ReplayData>(json);
+            if (clone == null || !clone.HasInitialLibrarySnapshot())
+            {
+                return null;
+            }
+
+            // JsonUtility can drop List<> on some Unity versions — always rebuild events.
+            clone.events = ExportEventRange(0) ?? new System.Collections.Generic.List<ReplayEventDto>();
+            return clone;
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[Replay] ExportPartialClone failed: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Copies recorded inputs from <paramref name="startIndex"/> onward so the spectator
+    /// stream can keep feeding a watcher after the initial snapshot.
+    /// </summary>
+    public static System.Collections.Generic.List<ReplayEventDto> ExportEventRange(int startIndex)
+    {
+        if (!IsRecording || _current.events == null || startIndex < 0)
+        {
+            return null;
+        }
+
+        var slice = new System.Collections.Generic.List<ReplayEventDto>();
+        for (int i = startIndex; i < _current.events.Count; i++)
+        {
+            var src = _current.events[i];
+            if (src == null)
+            {
+                continue;
+            }
+
+            try
+            {
+                var evtClone = JsonUtility.FromJson<ReplayEventDto>(JsonUtility.ToJson(src));
+                if (evtClone != null)
+                {
+                    slice.Add(evtClone);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[Replay] Failed to clone event {i}: {ex.Message}");
+            }
+        }
+
+        return slice;
+    }
+
     static bool IsReplaySession()
     {
-        return ContinuousController.instance != null && ContinuousController.instance.isReplay;
+        return ContinuousController.instance != null &&
+               (ContinuousController.instance.isReplay ||
+                ContinuousController.instance.isTournamentSpectator ||
+                ContinuousController.instance.isSpectatorCatchUp);
     }
 
     static string ResolveMode()
