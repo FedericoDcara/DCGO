@@ -40,6 +40,9 @@ public class TournamentState
     public bool finished;
     public int bracketSeed;
     public string championUserId;
+    /// <summary>Sit-out host / admin (not seeded into the bracket).</summary>
+    public string adminUserId;
+    public string adminNickName;
     public int playerCount;
     public TournamentPlayerSlot[] players;
     public TournamentMatchSlot[] matches;
@@ -330,6 +333,32 @@ public class TournamentState
         return null;
     }
 
+    public bool IsAdmin(string userId)
+    {
+        return !string.IsNullOrEmpty(userId) && userId == adminUserId;
+    }
+
+    /// <summary>Ready two-player matches that can be spectated from the wait hub.</summary>
+    public List<TournamentMatchSlot> ListSpectatableMatches()
+    {
+        var list = new List<TournamentMatchSlot>();
+        if (matches == null)
+        {
+            return list;
+        }
+
+        for (int i = 0; i < matches.Length; i++)
+        {
+            var match = matches[i];
+            if (TournamentKeys.IsReadyTwoPlayerMatch(match))
+            {
+                list.Add(match);
+            }
+        }
+
+        return list;
+    }
+
     public TournamentPlayerSlot GetPlayer(string userId)
     {
         if (players == null || string.IsNullOrEmpty(userId))
@@ -435,6 +464,16 @@ public class TournamentState
         if (!string.IsNullOrEmpty(other.championUserId))
         {
             championUserId = other.championUserId;
+        }
+
+        if (!string.IsNullOrEmpty(other.adminUserId))
+        {
+            adminUserId = other.adminUserId;
+        }
+
+        if (!string.IsNullOrEmpty(other.adminNickName))
+        {
+            adminNickName = other.adminNickName;
         }
 
         if (other.playerCount > 0)

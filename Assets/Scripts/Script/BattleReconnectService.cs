@@ -132,13 +132,48 @@ public class BattleReconnectService : MonoBehaviourPunCallbacks
 
         foreach (var player in PhotonNetwork.CurrentRoom.Players.Values)
         {
-            if (player != null && !player.IsLocal && player.IsInactive)
+            if (player != null && !player.IsLocal && player.IsInactive && IsTrackedBattlePeer(player))
             {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Reconnect hold is for the two fighters only. Spectators share the match room
+    /// and often carry a stale BattleHb from their own finished game.
+    /// </summary>
+    static bool IsTrackedBattlePeer(Photon.Realtime.Player player)
+    {
+        if (player == null || TournamentKeys.IsSpectator(player))
+        {
+            return false;
+        }
+
+        // Role may not be written on the first join frame. Wait-hub / spectate
+        // joiners are not in battle, so their leftover BattleHb must be ignored.
+        if (ContinuousController.instance != null &&
+            ContinuousController.instance.isTournament &&
+            !PlayerInBattle(player))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    static bool PlayerInBattle(Photon.Realtime.Player player)
+    {
+        if (player?.CustomProperties == null)
+        {
+            return false;
+        }
+
+        return player.CustomProperties.TryGetValue("isBattle", out object value) &&
+               value is bool inBattle &&
+               inBattle;
     }
 
     public void MarkIntentionalDisconnect()
@@ -249,7 +284,7 @@ public class BattleReconnectService : MonoBehaviourPunCallbacks
             return;
         }
 
-        if (otherPlayer != null && otherPlayer.IsInactive)
+        if (otherPlayer != null && otherPlayer.IsInactive && IsTrackedBattlePeer(otherPlayer))
         {
             EnsureHoldForOpponent();
         }
@@ -399,7 +434,7 @@ public class BattleReconnectService : MonoBehaviourPunCallbacks
 
         foreach (var player in PhotonNetwork.CurrentRoom.Players.Values)
         {
-            if (player == null || player.IsLocal || player.IsInactive)
+            if (player == null || player.IsLocal || player.IsInactive || !IsTrackedBattlePeer(player))
             {
                 continue;
             }

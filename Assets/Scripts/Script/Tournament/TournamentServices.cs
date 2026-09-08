@@ -25,6 +25,11 @@ public class TournamentServices : MonoBehaviour
         {
             Match = gameObject.AddComponent<TournamentMatchDirector>();
         }
+
+        if (GetComponent<SpectatorCatchUpTransfer>() == null)
+        {
+            gameObject.AddComponent<SpectatorCatchUpTransfer>();
+        }
     }
 
     public static TournamentServices EnsureExists()

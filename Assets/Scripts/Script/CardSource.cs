@@ -104,14 +104,33 @@ public class CardSource : MonoBehaviour
 
     public void SetUpCardIndex(int _cardIndex)
     {
-        PhotonView _PhotonView = GetComponent<PhotonView>();
-
-        _PhotonView ??= gameObject.AddComponent<PhotonView>();
-
         CardIndex = _cardIndex;
 
-        _PhotonView.ViewID = CardIndex + 60;
+        PhotonView _PhotonView = GetComponent<PhotonView>();
 
+        // Tournament spectators sit in the fighters' Photon room. Claiming
+        // CardIndex+60 collides with the live cards and drops OwnershipUpdate /
+        // scene RPCs. Offline replay uses a private room, so it can keep ViewIDs.
+        if (ContinuousController.instance != null &&
+            ContinuousController.instance.isTournamentSpectator)
+        {
+            if (_PhotonView != null)
+            {
+                if (_PhotonView.ViewID != 0)
+                {
+                    PhotonNetwork.LocalCleanPhotonView(_PhotonView);
+                }
+
+                _PhotonView.enabled = false;
+                _PhotonView.ViewID = 0;
+            }
+
+            PhotonView = _PhotonView;
+            return;
+        }
+
+        _PhotonView ??= gameObject.AddComponent<PhotonView>();
+        _PhotonView.ViewID = CardIndex + 60;
         PhotonView = _PhotonView;
     }
 

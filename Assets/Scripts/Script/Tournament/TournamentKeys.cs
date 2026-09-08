@@ -18,6 +18,133 @@ public static class TournamentKeys
         return userId == ByeUserId;
     }
 
+    /// <summary>Lobby / wait hub capacity: bracket seats + one optional sit-out admin.</summary>
+    public static int RoomCapacityForBracket(int bracketSize)
+    {
+        return NormalizePlayerCount(bracketSize) + 1;
+    }
+
+    /// <summary>Match room capacity: 2 competitors + everyone else (waiters / admin).</summary>
+    public static int MatchRoomMaxPlayers(int bracketSize)
+    {
+        return NormalizePlayerCount(bracketSize) + 1;
+    }
+
+    public static bool IsSitOut(Photon.Realtime.Player player)
+    {
+        if (player?.CustomProperties == null)
+        {
+            return false;
+        }
+
+        return player.CustomProperties.TryGetValue(SitOutProperty, out object value) &&
+               value is bool sitOut &&
+               sitOut;
+    }
+
+    public static bool IsSpectator(Photon.Realtime.Player player)
+    {
+        if (player?.CustomProperties == null)
+        {
+            return false;
+        }
+
+        return player.CustomProperties.TryGetValue(RoleProperty, out object value) &&
+               value is string role &&
+               role == RoleSpectator;
+    }
+
+    public static bool IsCompetitor(Photon.Realtime.Player player)
+    {
+        if (player == null || player.IsInactive)
+        {
+            return false;
+        }
+
+        return !IsSpectator(player);
+    }
+
+    /// <summary>Active Photon clients that are fighting (excludes spectators).</summary>
+    public static int CountActiveCompetitors()
+    {
+        if (Photon.Pun.PhotonNetwork.CurrentRoom?.Players == null)
+        {
+            return 0;
+        }
+
+        int n = 0;
+        foreach (var player in Photon.Pun.PhotonNetwork.CurrentRoom.Players.Values)
+        {
+            if (IsCompetitor(player))
+            {
+                n++;
+            }
+        }
+
+        return n;
+    }
+
+    public static bool HasInactiveCompetitor()
+    {
+        if (Photon.Pun.PhotonNetwork.CurrentRoom?.Players == null)
+        {
+            return false;
+        }
+
+        foreach (var player in Photon.Pun.PhotonNetwork.CurrentRoom.Players.Values)
+        {
+            if (player != null && !player.IsLocal && player.IsInactive && IsCompetitor(player))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public static Photon.Realtime.Player FindCompetitorMaster()
+    {
+        if (Photon.Pun.PhotonNetwork.CurrentRoom?.Players == null)
+        {
+            return null;
+        }
+
+        Photon.Realtime.Player master = Photon.Pun.PhotonNetwork.MasterClient;
+        if (IsCompetitor(master))
+        {
+            return master;
+        }
+
+        foreach (var player in Photon.Pun.PhotonNetwork.CurrentRoom.Players.Values)
+        {
+            if (IsCompetitor(player))
+            {
+                return player;
+            }
+        }
+
+        return null;
+    }
+
+    public static void EnsureMasterIsCompetitor()
+    {
+        if (!Photon.Pun.PhotonNetwork.InRoom || !Photon.Pun.PhotonNetwork.IsMasterClient)
+        {
+            return;
+        }
+
+        if (IsCompetitor(Photon.Pun.PhotonNetwork.LocalPlayer))
+        {
+            return;
+        }
+
+        var competitor = FindCompetitorMaster();
+        if (competitor != null && competitor != Photon.Pun.PhotonNetwork.LocalPlayer)
+        {
+            Photon.Pun.PhotonNetwork.SetMasterClient(competitor);
+        }
+    }
+
     /// <summary>Both seats filled with real players — safe to open a Photon match room.</summary>
     public static bool IsReadyTwoPlayerMatch(TournamentMatchSlot match)
     {
@@ -176,12 +303,24 @@ public static class TournamentKeys
     public const string SeriesWinsBProperty = "TourneySeriesWinsB";
     public const string GameIndexProperty = "TourneyGameIndex";
     public const string LastLoserProperty = "TourneyLastLoser";
+    /// <summary>User id the loser chose to go first in the next Bo3 game.</summary>
+    public const string NextFirstUserIdProperty = "TourneyNextFirstUserId";
+    /// <summary>Game index the next-first choice applies to (avoids reusing game 2's pick for game 3).</summary>
+    public const string NextFirstGameIndexProperty = "TourneyNextFirstGameIndex";
     /// <summary>Local player is on the post-game result screen (used to auto-start the next Bo3 game together).</summary>
     public const string OnResultProperty = "TourneyOnResult";
 
     public const string PlayerIdProperty = "TourneyPlayerId";
     public const string LockedDeckProperty = "TourneyLockedDeck";
     public const string ReadyPropertyPrefix = "TourneyReady";
+    /// <summary>Host opted out of the bracket (admin / sit-out).</summary>
+    public const string SitOutProperty = "TourneySitOut";
+    /// <summary>Room / state: userId of the sit-out admin.</summary>
+    public const string AdminUserIdProperty = "TourneyAdminUserId";
+    /// <summary>Match-room role: competitor or spectator.</summary>
+    public const string RoleProperty = "TourneyRole";
+    public const string RoleCompetitor = "competitor";
+    public const string RoleSpectator = "spectator";
 
     public const string LobbyInfix = "-T-";
     public const string WaitHubInfix = "-T-W-";

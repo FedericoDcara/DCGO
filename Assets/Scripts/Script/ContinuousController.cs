@@ -81,18 +81,78 @@ public class ContinuousController : MonoBehaviour
     // === DCGO-CUSTOM:tournament begin ===
     public bool isTournament { get; set; }
     public bool isTournamentStarted { get; set; }
+    public bool isTournamentSpectator { get; set; }
+    /// <summary>Bracket userId whose POV the spectator follows (default match userIdA).</summary>
+    public string TournamentSpectateViewerUserId { get; set; }
     public TournamentState TournamentState { get; set; }
     public string TournamentPlayerId { get; set; }
     public int TournamentPlayerCount { get; set; } = TournamentKeys.DefaultPlayerCount;
+
+    /// <summary>
+    /// Live spectate: the board is driven entirely by the streamed MatchRecorder inputs, so
+    /// live battle RPCs stay blocked for the whole spectated game.
+    /// </summary>
+    public bool isSpectatorCatchUp
+    {
+        get => _isSpectatorCatchUp;
+        set
+        {
+            _isSpectatorCatchUp = value;
+            SpectatorInputGate.StreamOnly = value;
+        }
+    }
+
+    bool _isSpectatorCatchUp;
+
+    public ReplayData ActiveCatchUpReplay { get; set; }
+
+    /// <summary>False during replay or live tournament spectate — local client must not act.</summary>
+    public bool CanLocalBattleInput => !isReplay && !isTournamentSpectator;
+
+    /// <summary>Seed/decks/first-player init from recorded data (offline replay or live spectate).</summary>
+    public ReplayData ActivePlaybackData
+    {
+        get
+        {
+            if (isSpectatorCatchUp && ActiveCatchUpReplay != null)
+            {
+                return ActiveCatchUpReplay;
+            }
+
+            if (isReplay)
+            {
+                return ActiveReplay;
+            }
+
+            return null;
+        }
+    }
 
     public void ClearTournament()
     {
         isTournament = false;
         isTournamentStarted = false;
+        isTournamentSpectator = false;
+        TournamentSpectateViewerUserId = null;
         TournamentState = null;
         TournamentPlayerId = null;
         TournamentPlayerCount = TournamentKeys.DefaultPlayerCount;
+        ClearCatchUp();
         TournamentServices.Instance?.Match?.ResetDirector();
+    }
+
+    public void ClearTournamentSpectator()
+    {
+        isTournamentSpectator = false;
+        TournamentSpectateViewerUserId = null;
+        ClearCatchUp();
+    }
+
+    public void ClearCatchUp()
+    {
+        isSpectatorCatchUp = false;
+        ActiveCatchUpReplay = null;
+        SpectatorInputGate.Clear();
     }
     // === DCGO-CUSTOM:tournament end ===
 
@@ -1627,6 +1687,15 @@ public class ContinuousController : MonoBehaviour
                 : "Unload from Tournament (series/hub)");
             if (tournamentNextGame)
             {
+                // Clear isBattle so spectators waiting between Bo3 games can attach.
+                if (PhotonNetwork.InRoom)
+                {
+                    Hashtable betweenGamesProp = PhotonNetwork.LocalPlayer.CustomProperties ?? new Hashtable();
+                    betweenGamesProp["isBattle"] = false;
+                    betweenGamesProp[TournamentKeys.OnResultProperty] = false;
+                    PhotonNetwork.LocalPlayer.SetCustomProperties(betweenGamesProp);
+                }
+
                 // Release the EndBattle lock before rematch loading. If EndLoading hangs,
                 // the next result screen (e.g. 1-1) must still be able to call EndBattle.
                 _endBattle = false;
@@ -1964,6 +2033,12 @@ public class ContinuousController : MonoBehaviour
     [PunRPC]
     public void SetRandom(long random)
     {
+        if (isSpectatorCatchUp && ActiveCatchUpReplay != null)
+        {
+            // Mid-game catch-up seeds from the snapshot. Kickoff spectate follows SetRandom.
+            return;
+        }
+
         StartCoroutine(SetRandomCoroutine(random));
     }
 

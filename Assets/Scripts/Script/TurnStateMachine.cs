@@ -65,6 +65,19 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
         // === DCGO-CUSTOM:replay begin ===
         #region AIモード / Replay
         bool isReplay = ContinuousController.instance != null && ContinuousController.instance.isReplay;
+        bool isCatchUp = ContinuousController.instance != null &&
+                         ContinuousController.instance.isSpectatorCatchUp &&
+                         ContinuousController.instance.ActiveCatchUpReplay != null;
+        var playbackData = ContinuousController.instance != null
+            ? ContinuousController.instance.ActivePlaybackData
+            : null;
+        // Spectators stay on the recorder stream for the whole game. Mixing live
+        // battle RPCs after catch-up freezes optional-effect WaitUntils.
+        if (isCatchUp)
+        {
+            SpectatorInputGate.StreamOnly = true;
+            SpectatorInputGate.Injecting = false;
+        }
         if (GManager.instance.IsAI || isReplay)
         {
             if (!isReplay)
@@ -142,6 +155,7 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
         #region gameContextの設定
         gameContext = new GameContext(GManager.instance.You, GManager.instance.Opponent);
         // === DCGO-CUSTOM:replay begin ===
+        // Offline replay may override POV; catch-up keeps GameContext spectator seat mapping.
         if (isReplay && ContinuousController.instance.ActiveReplay != null)
         {
             int viewerId = ContinuousController.instance.ActiveReplay.viewerPlayerId;
@@ -160,16 +174,44 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
         Photon.Realtime.Player MasterPlayer = null;
         Photon.Realtime.Player nonMasterPlayer = null;
 
-        foreach (Photon.Realtime.Player player in PhotonNetwork.PlayerList)
-        {
-            if (player.ActorNumber != PhotonNetwork.CurrentRoom.MasterClientId)
-            {
-                nonMasterPlayer = player;
-            }
+        // Tournament match rooms may include spectators — only map the two competitors.
+        bool tournamentMatchWithExtras =
+            ContinuousController.instance != null &&
+            ContinuousController.instance.isTournament &&
+            PhotonNetwork.PlayerList != null &&
+            PhotonNetwork.PlayerList.Length > 2;
 
-            else
+        if (tournamentMatchWithExtras)
+        {
+            MasterPlayer = TournamentKeys.FindCompetitorMaster();
+            foreach (Photon.Realtime.Player player in PhotonNetwork.PlayerList)
             {
-                MasterPlayer = player;
+                if (!TournamentKeys.IsCompetitor(player))
+                {
+                    continue;
+                }
+
+                if (MasterPlayer != null && player.ActorNumber == MasterPlayer.ActorNumber)
+                {
+                    continue;
+                }
+
+                nonMasterPlayer = player;
+                break;
+            }
+        }
+        else
+        {
+            foreach (Photon.Realtime.Player player in PhotonNetwork.PlayerList)
+            {
+                if (player.ActorNumber != PhotonNetwork.CurrentRoom.MasterClientId)
+                {
+                    nonMasterPlayer = player;
+                }
+                else
+                {
+                    MasterPlayer = player;
+                }
             }
         }
         #endregion
@@ -183,6 +225,12 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
             SetPlayerName(1, string.IsNullOrEmpty(replay.player1Name) ? "Player 1" : replay.player1Name);
             MatchRecorder.SetPlayerNames(replay.player0Name, replay.player1Name);
             MatchRecorder.SetViewerPlayerId(replay.viewerPlayerId);
+        }
+        else if (isCatchUp && playbackData != null &&
+                 (!string.IsNullOrEmpty(playbackData.player0Name) || !string.IsNullOrEmpty(playbackData.player1Name)))
+        {
+            SetPlayerName(0, string.IsNullOrEmpty(playbackData.player0Name) ? "Player 0" : playbackData.player0Name);
+            SetPlayerName(1, string.IsNullOrEmpty(playbackData.player1Name) ? "Player 1" : playbackData.player1Name);
         }
         else
         {
@@ -406,27 +454,26 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
 
         #region 乱数列初期化
         // === DCGO-CUSTOM:replay begin ===
-        if (isReplay && ContinuousController.instance.ActiveReplay != null)
+        if (playbackData != null && (isReplay || isCatchUp))
         {
-            long seed = ContinuousController.instance.ActiveReplay.GetRandomSeed();
+            long seed = playbackData.GetRandomSeed();
             GameRandom.Seed(seed);
             ContinuousController.instance.LastBattleSeed = seed;
             MatchRecorder.SetSeed(seed);
             ContinuousController.instance.DoneSetRandom = true;
-            var replayMeta = ContinuousController.instance.ActiveReplay;
-            if (string.IsNullOrEmpty(replayMeta.randomSeedText))
+            if (string.IsNullOrEmpty(playbackData.randomSeedText))
             {
                 Debug.LogError("[Replay] Replay file is missing randomSeedText (seed was never saved). " +
                                "Playback will desync and freeze. Re-record the match after the seed-capture fix.");
             }
-            Debug.Log($"[Replay] Seeded GameRandom from replay: {seed} snapshot={replayMeta.HasInitialLibrarySnapshot()}");
+            Debug.Log($"[Replay] Seeded GameRandom from playback: {seed} catchUp={isCatchUp} snapshot={playbackData.HasInitialLibrarySnapshot()}");
         }
         else if (PhotonNetwork.IsMasterClient)
         {
             ContinuousController.instance.GetComponent<PhotonView>().RPC("SetRandom", RpcTarget.All, RandomUtility.GetSecureRandom());
         }
 
-        if (!isReplay)
+        if (!isReplay && !isCatchUp)
         {
             float seedWait = 0f;
             while (!ContinuousController.instance.DoneSetRandom && seedWait < 20f)
@@ -489,10 +536,10 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
     {
         // === DCGO-CUSTOM:replay begin ===
         if (ContinuousController.instance != null &&
-            ContinuousController.instance.isReplay &&
-            ContinuousController.instance.ActiveReplay != null)
+            ContinuousController.instance.ActivePlaybackData != null &&
+            (ContinuousController.instance.isReplay || ContinuousController.instance.isSpectatorCatchUp))
         {
-            var replay = ContinuousController.instance.ActiveReplay;
+            var replay = ContinuousController.instance.ActivePlaybackData;
             // Keep RNG stream aligned with the live match.
             if (replay.rolledFirstPlayer || replay.version < 2)
             {
@@ -505,7 +552,7 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
             // StartGame sets FirstPlayer = NonTurnPlayer, then SwitchTurnPlayer makes them TurnPlayer.
             gameContext.TurnPlayer = gameContext.PlayerFromID(1 - firstId);
             MatchRecorder.SetFirstPlayer(firstId);
-            Debug.Log($"[Replay] First player forced to id={firstId} rolled={replay.rolledFirstPlayer}");
+            Debug.Log($"[Replay] First player forced to id={firstId} rolled={replay.rolledFirstPlayer} catchUp={ContinuousController.instance.isSpectatorCatchUp}");
             yield break;
         }
         // === DCGO-CUSTOM:replay end ===
@@ -513,9 +560,17 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
         // === DCGO-CUSTOM:tournament begin ===
         string localId = TournamentState.EnsureLocalPlayerId();
         var cc = ContinuousController.instance;
-        var match = cc != null && cc.isTournament && cc.TournamentState != null
-            ? cc.TournamentState.FindActiveMatchFor(localId)
-            : null;
+        TournamentMatchSlot match = null;
+        if (cc != null && cc.isTournament && cc.TournamentState != null)
+        {
+            if (cc.isTournamentSpectator && !string.IsNullOrEmpty(cc.TournamentSpectateViewerUserId))
+            {
+                match = cc.TournamentState.FindActiveMatchFor(cc.TournamentSpectateViewerUserId);
+            }
+
+            match ??= cc.TournamentState.FindActiveMatchFor(localId);
+        }
+
         bool rematch = match != null && match.gameIndex > 0;
 
         if (rematch)
@@ -540,9 +595,17 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
 
             if (!string.IsNullOrEmpty(loserId) && !TournamentKeys.IsBye(loserId))
             {
-                bool localGoesFirst = loserId == localId;
-                gameContext.TurnPlayer = localGoesFirst ? gameContext.Opponent : gameContext.You;
-                Debug.Log($"[Battle] Rematch first=loser {loserId} youAreFirst={localGoesFirst} room={PhotonNetwork.CurrentRoom?.Name}");
+                string povId = cc != null && cc.isTournamentSpectator &&
+                               !string.IsNullOrEmpty(cc.TournamentSpectateViewerUserId)
+                    ? cc.TournamentSpectateViewerUserId
+                    : localId;
+                yield return ApplyRematchFirstPlayer(
+                    TournamentKeys.NextFirstUserIdProperty,
+                    TournamentKeys.NextFirstGameIndexProperty,
+                    match.gameIndex,
+                    povId,
+                    loserId);
+                Debug.Log($"[Battle] Rematch first chosen youAreFirst={gameContext.NonTurnPlayer != null && gameContext.NonTurnPlayer.isYou} loser={loserId} room={PhotonNetwork.CurrentRoom?.Name}");
                 yield break;
             }
         }
@@ -575,9 +638,13 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
 
                 if (!string.IsNullOrEmpty(loserId))
                 {
-                    bool localGoesFirst = loserId == friendLocalId;
-                    gameContext.TurnPlayer = localGoesFirst ? gameContext.Opponent : gameContext.You;
-                    Debug.Log($"[Battle] Friend rematch first=loser {loserId} youAreFirst={localGoesFirst}");
+                    yield return ApplyRematchFirstPlayer(
+                        FriendKeys.NextFirstUserIdProperty,
+                        FriendKeys.NextFirstGameIndexProperty,
+                        friendDirector.GameIndex,
+                        friendLocalId,
+                        loserId);
+                    Debug.Log($"[Battle] Friend rematch first chosen youAreFirst={gameContext.NonTurnPlayer != null && gameContext.NonTurnPlayer.isYou} loser={loserId}");
                     yield break;
                 }
             }
@@ -599,6 +666,36 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
         }
 
         Debug.Log($"[Battle] First player rematch={rematch} youAreFirst={gameContext.NonTurnPlayer != null && gameContext.NonTurnPlayer.isYou} room={PhotonNetwork.CurrentRoom?.Name}");
+    }
+
+    IEnumerator ApplyRematchFirstPlayer(
+        string userIdKey,
+        string gameIndexKey,
+        int gameIndex,
+        string localId,
+        string fallbackLoserId)
+    {
+        string firstId = Bo3FirstPlayerChoice.ReadChosenFirstUserId(userIdKey, gameIndexKey, gameIndex);
+        float waited = 0f;
+        while (string.IsNullOrEmpty(firstId) && waited < 8f)
+        {
+            firstId = Bo3FirstPlayerChoice.ReadChosenFirstUserId(userIdKey, gameIndexKey, gameIndex);
+            if (!string.IsNullOrEmpty(firstId))
+            {
+                break;
+            }
+
+            waited += Time.unscaledDeltaTime;
+            yield return null;
+        }
+
+        if (string.IsNullOrEmpty(firstId))
+        {
+            firstId = fallbackLoserId;
+        }
+
+        bool localGoesFirst = string.Equals(firstId, localId, System.StringComparison.OrdinalIgnoreCase);
+        gameContext.TurnPlayer = localGoesFirst ? gameContext.Opponent : gameContext.You;
     }
 
     static int ReadRoomFirstPlayerActor()
@@ -3619,6 +3716,11 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
     public bool endGame { get; set; } = false;
     public void OnClickSurrenderButton()
     {
+        if (ContinuousController.instance != null && !ContinuousController.instance.CanLocalBattleInput)
+        {
+            return;
+        }
+
         int localPlayerID;
 
         if (PhotonNetwork.IsMasterClient)
@@ -3638,43 +3740,19 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
     public void Surrender(int loserPlayerID)
     {
         // === DCGO-CUSTOM:replay begin ===
+        // Live surrender must reach spectators. Stream-only used to drop this RPC,
+        // and Finalize closed the recorder before the surrender event was flushed.
         MatchRecorder.RecordSurrender(loserPlayerID);
         // === DCGO-CUSTOM:replay end ===
 
-        Player player = null;
-
-        if (loserPlayerID == 0)
-        {
-            if (PhotonNetwork.IsMasterClient)
-            {
-                player = GManager.instance.You;
-            }
-
-            else
-            {
-                player = GManager.instance.Opponent;
-            }
-        }
-
-        else if (loserPlayerID == 1)
-        {
-            if (PhotonNetwork.IsMasterClient)
-            {
-                player = GManager.instance.Opponent;
-            }
-
-            else
-            {
-                player = GManager.instance.You;
-            }
-        }
+        Player player = GManager.instance != null
+            ? GManager.instance.GetPlayerFromID(loserPlayerID)
+            : null;
 
         if (player != null)
         {
             EndGame(player.Enemy, true);
         }
-
-        //EndGame(gameContext.NonTurnPlayer, true);
     }
 
     public void EndGame(Player Winner, bool Surrendered, string effectName = "")
@@ -3688,7 +3766,12 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
 
         // === DCGO-CUSTOM:replay begin ===
         // Finalize replay before EndGame filler selections are queued.
-        if (ContinuousController.instance == null || !ContinuousController.instance.isReplay)
+        if (ContinuousController.instance != null &&
+            (ContinuousController.instance.isReplay || ContinuousController.instance.isTournamentSpectator))
+        {
+            MatchRecorder.Cancel();
+        }
+        else
         {
             int winnerId = Winner != null ? Winner.PlayerID : -1;
             bool disconnect = Winner == null;
@@ -3705,10 +3788,6 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
 
                 MatchHistoryStore.SaveReplay(replayData);
             }
-        }
-        else
-        {
-            MatchRecorder.Cancel();
         }
         // === DCGO-CUSTOM:replay end ===
 
