@@ -5,7 +5,8 @@ public static class TournamentKeys
 {
     public const int DefaultPlayerCount = 8;
     public const int MinPlayersToStart = 2;
-    public const int WinsToTakeSeries = 2;
+    /// <summary>Single-elimination: one game decides the match. Draws replay that game.</summary>
+    public const int WinsToTakeSeries = 1;
 
     /// <summary>Bye placeholder in bracket slots / match sides.</summary>
     public const string ByeUserId = "__BYE__";

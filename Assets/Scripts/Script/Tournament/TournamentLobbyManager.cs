@@ -1429,8 +1429,8 @@ public class TournamentLobbyManager : MonoBehaviourPunCallbacks
             {
                 int size = TournamentKeys.ActivePlayerCount;
                 _howToText.text = LocalizeUtility.GetLocalizedString(
-                    EngMessage: $"How to play\n\n1. Share the Room ID (up to {size} players + optional admin).\n2. Choose your deck.\n3. Tap Ready.\n4. Host can Sit out as admin, or start with {TournamentKeys.MinPlayersToStart}+ ready — empty seats become byes.\n\nBracket size: {size}\nDecks lock when the tournament starts.\nMatches are Best of 3.\nWaiting players can Spectate live matches.",
-                    JpnMessage: $"遊び方\n\n1. ルームIDを共有（最大{size}人＋管理者任意）\n2. デッキを選ぶ\n3. 準備完了を押す\n4. ホストは管理者不参加も可。{TournamentKeys.MinPlayersToStart}人以上で開始 — 空き枠はBYE\n\n枠: {size}人\n開始後はデッキ変更できません。\n試合は3本先取です。\n待機中は観戦できます。");
+                    EngMessage: $"How to play\n\n1. Share the Room ID (up to {size} players + optional admin).\n2. Choose your deck.\n3. Tap Ready.\n4. Host can Sit out as admin, or start with {TournamentKeys.MinPlayersToStart}+ ready — empty seats become byes.\n\nBracket size: {size}\nDecks lock when the tournament starts.\nMatches are single elimination (one game).\nWaiting players can Spectate live matches.",
+                    JpnMessage: $"遊び方\n\n1. ルームIDを共有（最大{size}人＋管理者任意）\n2. デッキを選ぶ\n3. 準備完了を押す\n4. ホストは管理者不参加も可。{TournamentKeys.MinPlayersToStart}人以上で開始 — 空き枠はBYE\n\n枠: {size}人\n開始後はデッキ変更できません。\n試合は1本勝負のシングルエリミネーションです。\n待機中は観戦できます。");
             }
         }
 
@@ -1559,8 +1559,7 @@ public class TournamentLobbyManager : MonoBehaviourPunCallbacks
             string a = state.DisplayName(match.userIdA);
             string b = state.DisplayName(match.userIdB);
             string roundName = TournamentKeys.RoundDisplayNameFor(state.ResolvedPlayerCount, match.round);
-            int gameNumber = match.gameIndex + 1;
-            string label = $"{roundName} M{match.matchIndex + 1}: {a} vs {b}  (Game {gameNumber}/3  {match.seriesWinsA}-{match.seriesWinsB})";
+            string label = $"{roundName} M{match.matchIndex + 1}: {a} vs {b}";
 
             int round = match.round;
             int matchIndex = match.matchIndex;
@@ -1865,8 +1864,8 @@ public class TournamentLobbyManager : MonoBehaviourPunCallbacks
         _howToText.lineSpacing = 1.15f;
         int size = TournamentKeys.ActivePlayerCount;
         _howToText.text = LocalizeUtility.GetLocalizedString(
-            EngMessage: $"How to play\n\n1. Share the Room ID (up to {size} players).\n2. Choose your deck.\n3. Tap Ready.\n4. Host can start with {TournamentKeys.MinPlayersToStart}+ ready — empty seats become byes.\n\nBracket size: {size}\nDecks lock when the tournament starts.\nMatches are Best of 3.",
-            JpnMessage: $"遊び方\n\n1. ルームIDを共有（最大{size}人）\n2. デッキを選ぶ\n3. 準備完了を押す\n4. ホストは{TournamentKeys.MinPlayersToStart}人以上で開始可 — 空き枠はBYE\n\n枠: {size}人\n開始後はデッキ変更できません。\n試合は3本先取です。");
+            EngMessage: $"How to play\n\n1. Share the Room ID (up to {size} players).\n2. Choose your deck.\n3. Tap Ready.\n4. Host can start with {TournamentKeys.MinPlayersToStart}+ ready — empty seats become byes.\n\nBracket size: {size}\nDecks lock when the tournament starts.\nMatches are single elimination (one game).",
+            JpnMessage: $"遊び方\n\n1. ルームIDを共有（最大{size}人）\n2. デッキを選ぶ\n3. 準備完了を押す\n4. ホストは{TournamentKeys.MinPlayersToStart}人以上で開始可 — 空き枠はBYE\n\n枠: {size}人\n開始後はデッキ変更できません。\n試合は1本勝負のシングルエリミネーションです。");
 
         var bracketGo = CreatePanel(right.transform, "Bracket", new Color(0f, 0f, 0f, 0f));
         Stretch(bracketGo.GetComponent<RectTransform>());

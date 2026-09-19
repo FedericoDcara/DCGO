@@ -109,17 +109,23 @@ public class StreamingAssetsUtility
         if (File.Exists(path))
             imageBuff = await ReadFile(path);
 
-#if UNITY_ANDROID && !UNITY_EDITOR
-        // Fall back to APK StreamingAssets if not yet on disk.
+        // PC standalone looks at Builds/Assets/Textures; Unity actually copies UI
+        // textures into DCGO_Data/StreamingAssets. Fall back so a player folder works alone.
         if (imageBuff == null)
         {
             string saJpg = Path.Combine(Application.streamingAssetsPath, "Textures", $"{fileName}.jpg").Replace("\\", "/");
             string saPng = Path.Combine(Application.streamingAssetsPath, "Textures", $"{fileName}.png").Replace("\\", "/");
+#if UNITY_ANDROID && !UNITY_EDITOR
             imageBuff = await ReadStreamingAssetsBytes(saJpg);
             if (imageBuff == null)
                 imageBuff = await ReadStreamingAssetsBytes(saPng);
-        }
+#else
+            if (File.Exists(saJpg))
+                imageBuff = await ReadFile(saJpg);
+            else if (File.Exists(saPng))
+                imageBuff = await ReadFile(saPng);
 #endif
+        }
 
         if (imageBuff == null)
             return null;

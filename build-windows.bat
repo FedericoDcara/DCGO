@@ -19,8 +19,9 @@ if not exist "%UNITY%" (
 )
 
 set "PROJECT=%~dp0"
-set "LOG=%PROJECT%Builds\Windows\build-windows.log"
-if not exist "%PROJECT%Builds\Windows" mkdir "%PROJECT%Builds\Windows"
+if "%PROJECT:~-1%"=="\" set "PROJECT=%PROJECT:~0,-1%"
+set "LOG=%PROJECT%\Builds\Windows\build-windows.log"
+if not exist "%PROJECT%\Builds\Windows" mkdir "%PROJECT%\Builds\Windows"
 
 echo Building Windows 64-bit player with:
 echo   Unity:   %UNITY%
