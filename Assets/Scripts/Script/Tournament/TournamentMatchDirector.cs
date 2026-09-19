@@ -7,7 +7,7 @@ using UnityEngine.UI;
 using Hashtable = ExitGames.Client.Photon.Hashtable;
 
 /// <summary>
-/// Runs a 2-player tournament match room: Bo3 loop, first-player, routing after the series.
+/// Runs a 2-player tournament match room: single-elimination game, routing after the match.
 /// Also supports read-only spectators joining the same Photon room.
 /// </summary>
 public class TournamentMatchDirector : MonoBehaviourPunCallbacks
@@ -813,8 +813,8 @@ public class TournamentMatchDirector : MonoBehaviourPunCallbacks
     }
 
     /// <summary>
-    /// After both players see the result, leave automatically so Bo3 game 2/3
-    /// starts without pressing Return to Title.
+    /// After both players see the result, leave automatically so the next
+    /// bracket match (or a draw rematch) starts without pressing Return to Title.
     /// </summary>
     public void BeginAutoAdvanceFromResult()
     {
@@ -1080,34 +1080,20 @@ public class TournamentMatchDirector : MonoBehaviourPunCallbacks
         string localId = TournamentState.EnsureLocalPlayerId();
         if (IsSpectating || (ContinuousController.instance != null && ContinuousController.instance.isTournamentSpectator))
         {
-            string viewerId = ContinuousController.instance.TournamentSpectateViewerUserId;
-            if (string.IsNullOrEmpty(viewerId))
-            {
-                viewerId = match.userIdA;
-            }
-
-            int you = state.IsPlayerA(match, viewerId) ? match.seriesWinsA : match.seriesWinsB;
-            int opp = state.IsPlayerA(match, viewerId) ? match.seriesWinsB : match.seriesWinsA;
-            int gameNumber = match.gameIndex + 1;
-            return $"Spectating  Game {gameNumber}/3  —  {you}-{opp}";
+            return "Spectating";
         }
 
-        int youScore = state.IsPlayerA(match, localId) ? match.seriesWinsA : match.seriesWinsB;
-        int oppScore = state.IsPlayerA(match, localId) ? match.seriesWinsB : match.seriesWinsA;
         if (ShouldReloadNextGame)
         {
-            return $"Series {youScore}-{oppScore} — next game starting...";
+            return "Draw — rematch starting...";
         }
 
         if (match.complete)
         {
-            bool localWonSeries = match.winnerUserId == localId;
-            return localWonSeries
-                ? $"Series won {youScore}-{oppScore}"
-                : $"Series lost {youScore}-{oppScore}";
+            return match.winnerUserId == localId ? "Match won" : "Match lost";
         }
 
-        return $"Series {youScore}-{oppScore}";
+        return null;
     }
 
     public IEnumerator StartNextGameCoroutine()
@@ -1572,28 +1558,15 @@ public class TournamentMatchDirector : MonoBehaviourPunCallbacks
             return;
         }
 
-        string localId = TournamentState.EnsureLocalPlayerId();
         if (IsSpectating || (ContinuousController.instance != null && ContinuousController.instance.isTournamentSpectator))
         {
-            string viewerId = ContinuousController.instance.TournamentSpectateViewerUserId;
-            if (string.IsNullOrEmpty(viewerId))
-            {
-                viewerId = match.userIdA;
-            }
-
-            int you = state.IsPlayerA(match, viewerId) ? match.seriesWinsA : match.seriesWinsB;
-            int opp = state.IsPlayerA(match, viewerId) ? match.seriesWinsB : match.seriesWinsA;
-            int gameNumber = match.gameIndex + 1;
             string a = state.DisplayName(match.userIdA);
             string b = state.DisplayName(match.userIdB);
-            _seriesOverlay.text = $"Spectating  Game {gameNumber}/3  —  {a} vs {b}  ({you}-{opp})";
+            _seriesOverlay.text = $"Spectating  —  {a} vs {b}";
             return;
         }
 
-        int youScore = state.IsPlayerA(match, localId) ? match.seriesWinsA : match.seriesWinsB;
-        int oppScore = state.IsPlayerA(match, localId) ? match.seriesWinsB : match.seriesWinsA;
-        int gameNum = match.gameIndex + 1;
-        _seriesOverlay.text = $"Game {gameNum}/3  —  You {youScore}-{oppScore}";
+        _seriesOverlay.text = "Tournament";
     }
 
     void ApplyFirstPlayerProperty(bool isRematch)

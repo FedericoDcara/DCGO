@@ -75,8 +75,42 @@ public static class WindowsStandaloneBuild
             return "Build failed: " + report.summary.result + " (" + report.summary.totalErrors + " errors).";
         }
 
+        CopyPcRuntimeTextures(outputDir);
+
         Debug.Log($"[WindowsStandaloneBuild] Success: {exePath} ({report.summary.totalSize} bytes)");
         return null;
+    }
+
+    /// <summary>
+    /// Windows players load playmats/backgrounds/card backs from Builds/Assets/Textures
+    /// (sibling of Builds/Windows), not from DCGO_Data/StreamingAssets.
+    /// </summary>
+    static void CopyPcRuntimeTextures(string windowsOutputDir)
+    {
+        string source = Path.Combine(Application.streamingAssetsPath, "Textures");
+        if (!Directory.Exists(source))
+            return;
+
+        string dest = Path.GetFullPath(Path.Combine(windowsOutputDir, "..", "Assets", "Textures"));
+        Directory.CreateDirectory(dest);
+        CopyDirectorySkippingMeta(source, dest);
+        Debug.Log($"[WindowsStandaloneBuild] Copied runtime textures to {dest}");
+    }
+
+    static void CopyDirectorySkippingMeta(string sourceDir, string destDir)
+    {
+        Directory.CreateDirectory(destDir);
+        foreach (string file in Directory.GetFiles(sourceDir))
+        {
+            if (file.EndsWith(".meta", System.StringComparison.OrdinalIgnoreCase))
+                continue;
+            File.Copy(file, Path.Combine(destDir, Path.GetFileName(file)), overwrite: true);
+        }
+
+        foreach (string dir in Directory.GetDirectories(sourceDir))
+        {
+            CopyDirectorySkippingMeta(dir, Path.Combine(destDir, Path.GetFileName(dir)));
+        }
     }
 
     static string[] GetEnabledScenes()

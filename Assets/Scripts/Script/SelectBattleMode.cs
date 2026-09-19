@@ -450,8 +450,8 @@ public class SelectBattleMode : MonoBehaviour
             Commands,
             CommandTexts,
             LocalizeUtility.GetLocalizedString(
-                EngMessage: "Choose tournament size (Best of 3, single elimination). Fewer players → byes.",
-                JpnMessage: "トーナメント人数を選んでください（3本先取・シングルエリミネーション）。不足分はBYE。"),
+                EngMessage: "Choose tournament size (single elimination, one game). Fewer players → byes.",
+                JpnMessage: "トーナメント人数を選んでください（1本勝負・シングルエリミネーション）。不足分はBYE。"),
             true);
     }
 
