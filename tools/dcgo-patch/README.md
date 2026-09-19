@@ -14,7 +14,7 @@ Visual-only extras (Blocker bubbles, ParticleDNA) are **not** in this tool.
 
 Licensed / open-source-locked packs (**Sound**, **SCI-FI UI Components**, **DigitalEnvironmentEffects**) are **optional**. They are never exported into patches or the portable zip. Put them in a local folder before `apply` if you have them; if the folder is missing, apply still succeeds.
 
-Baseline recorded in `config.json`: **Public 1.17.3** (`6faae89a7`).
+Baseline recorded in `config.json`: **Public 1.18.0** (`75e03a83b`).
 
 ## Commands
 

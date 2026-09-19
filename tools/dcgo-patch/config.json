@@ -1,9 +1,9 @@
 {
-  "officialRemote": "origin",
+  "officialRemote": "upstream",
   "officialBranch": "develop",
-  "baselineCommit": "6faae89a7",
-  "baselineLabel": "Public 1.17.3",
-  "customBranch": "dev/androidApp-1.17.3",
+  "baselineCommit": "75e03a83b",
+  "baselineLabel": "Public 1.18.0",
+  "customBranch": "custom/features-1.18.0",
   "localAssetsRoot": "CustomAssets",
   "optionalAssets": [
     "Assets/Sound",
