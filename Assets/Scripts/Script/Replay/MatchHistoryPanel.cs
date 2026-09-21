@@ -134,8 +134,17 @@ public class MatchHistoryPanel : MonoBehaviour
         scrollRt.offsetMax = new Vector2(-24f, -120f);
         scrollGo.GetComponent<Image>().color = new Color(0.05f, 0.06f, 0.1f, 0.9f);
 
+        var viewportGo = new GameObject("Viewport", typeof(RectTransform), typeof(RectMask2D));
+        viewportGo.transform.SetParent(scrollGo.transform, false);
+        var viewportRt = viewportGo.GetComponent<RectTransform>();
+        viewportRt.anchorMin = Vector2.zero;
+        viewportRt.anchorMax = Vector2.one;
+        viewportRt.offsetMin = Vector2.zero;
+        viewportRt.offsetMax = Vector2.zero;
+        viewportRt.pivot = new Vector2(0.5f, 0.5f);
+
         var contentGo = new GameObject("Content", typeof(RectTransform), typeof(VerticalLayoutGroup), typeof(ContentSizeFitter));
-        contentGo.transform.SetParent(scrollGo.transform, false);
+        contentGo.transform.SetParent(viewportGo.transform, false);
         var contentRt = contentGo.GetComponent<RectTransform>();
         contentRt.anchorMin = new Vector2(0f, 1f);
         contentRt.anchorMax = new Vector2(1f, 1f);
@@ -154,9 +163,11 @@ public class MatchHistoryPanel : MonoBehaviour
 
         var scroll = scrollGo.GetComponent<ScrollRect>();
         scroll.content = contentRt;
+        scroll.viewport = viewportRt;
         scroll.horizontal = false;
         scroll.vertical = true;
-        scroll.viewport = scrollRt;
+        scroll.movementType = ScrollRect.MovementType.Clamped;
+        scroll.scrollSensitivity = 40f;
         _listContent = contentGo.transform;
 
         _root.SetActive(false);
@@ -238,7 +249,7 @@ public class MatchHistoryPanel : MonoBehaviour
         summaryText.alignment = TextAnchor.MiddleLeft;
         summaryText.color = Color.white;
         summaryText.raycastTarget = false;
-        summaryText.horizontalOverflow = HorizontalWrapMode.Wrap;
+        summaryText.horizontalOverflow = HorizontalWrapMode.Overflow;
         summaryText.verticalOverflow = VerticalWrapMode.Truncate;
         summaryText.text = summary;
         var summaryLe = summaryGo.GetComponent<LayoutElement>();

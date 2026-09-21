@@ -170,6 +170,10 @@ public class ContinuousController : MonoBehaviour
     public static string PlayerNameKey => "PlayerNameKey";
     #endregion
 
+    // === DCGO-CUSTOM:profileicon begin ===
+    public static string ProfileIconKey => "ProfileIcon";
+    // === DCGO-CUSTOM:profileicon end ===
+
     #region Key for the property that stores the win count data
     public static string WinCountKey => "WinCountKey";
     #endregion
@@ -711,19 +715,27 @@ public class ContinuousController : MonoBehaviour
         await StreamingAssetsUtility.EnsureBundledTexturesSeeded();
         // === DCGO-CUSTOM:android end ===
 
-        Sprite reverseCardSprite = await StreamingAssetsUtility.GetSprite("card_back_main");
+        // === DCGO-CUSTOM:playarea begin ===
+        LoadPlayAreaCosmetics();
+
+        Sprite reverseCardSprite = await StreamingAssetsUtility.GetSprite(sleeveMain);
+        if (reverseCardSprite == null)
+            reverseCardSprite = await StreamingAssetsUtility.GetSprite(DefaultSleeveMain);
 
         if (reverseCardSprite != null)
         {
             ReverseCard = reverseCardSprite;
         }
 
-        Sprite reverseDigieggCardSprite = await StreamingAssetsUtility.GetSprite("card_back_sub");
+        Sprite reverseDigieggCardSprite = await StreamingAssetsUtility.GetSprite(sleeveEgg);
+        if (reverseDigieggCardSprite == null)
+            reverseDigieggCardSprite = await StreamingAssetsUtility.GetSprite(DefaultSleeveEgg);
 
         if (reverseDigieggCardSprite != null)
         {
             ReverseCard_Digitama = reverseDigieggCardSprite;
         }
+        // === DCGO-CUSTOM:playarea end ===
 
         await LoadBanListOnline();
 
@@ -763,6 +775,10 @@ public class ContinuousController : MonoBehaviour
         LoadTurnSuspendedCards();
         LoadCheckBeforeEndingSelection();
         LoadSuspendedCardsDirectionIsLeft();
+
+        // === DCGO-CUSTOM:matchmusic begin ===
+        LoadUseReactiveMatchMusic();
+        // === DCGO-CUSTOM:matchmusic end ===
 
         //Graphics
         LoadShowBackgroundParticle();
@@ -1122,6 +1138,34 @@ public class ContinuousController : MonoBehaviour
     }
     #endregion
 
+    // === DCGO-CUSTOM:matchmusic begin ===
+    #region Reactive Match Music
+    [HideInInspector] public bool useReactiveMatchMusic = false;
+    string _useReactiveMatchMusicKey = "UseReactiveMatchMusic";
+
+    public void SaveUseReactiveMatchMusic()
+    {
+        PlayerPrefsUtil.SetBool(_useReactiveMatchMusicKey, useReactiveMatchMusic);
+        PlayerPrefs.Save();
+
+        // Mid-match toggle: start or stop reacting immediately.
+        if (GManager.instance != null && GManager.instance.BattleBGM != null)
+        {
+            MatchMusicController controller = MatchMusicController.EnsureExists();
+            if (useReactiveMatchMusic)
+                controller.ResumeReacting();
+            else
+                controller.StopReacting();
+        }
+    }
+
+    public void LoadUseReactiveMatchMusic()
+    {
+        useReactiveMatchMusic = PlayerPrefsUtil.GetBool(_useReactiveMatchMusicKey, false);
+    }
+    #endregion
+    // === DCGO-CUSTOM:matchmusic end ===
+
     #region Reverse opponents' cards
     [HideInInspector] public bool reverseOpponentsCards = false;
     string _reverseOpponentsCardsKey = "ReverseOpponentsCards";
@@ -1217,6 +1261,185 @@ public class ContinuousController : MonoBehaviour
 #endif
     }
     #endregion
+
+    // === DCGO-CUSTOM:playarea begin ===
+    #region Play area cosmetics
+    public const string DefaultPlayMatYou = "PlayMat_You";
+    public const string DefaultPlayMatOpponent = "PlayMat_Opponent";
+    public const string DefaultSleeveMain = "card_back_main";
+    public const string DefaultSleeveEgg = "card_back_sub";
+    public const string DefaultProfileIcon = ProfileIconUtility.DefaultId;
+
+    [HideInInspector] public string playMatYou = DefaultPlayMatYou;
+    [HideInInspector] public string playMatOpponent = DefaultPlayMatOpponent;
+    [HideInInspector] public string sleeveMain = DefaultSleeveMain;
+    [HideInInspector] public string sleeveEgg = DefaultSleeveEgg;
+    [HideInInspector] public string profileIcon = DefaultProfileIcon;
+
+    string _playMatYouKey = "PlayMatYou";
+    string _playMatOpponentKey = "PlayMatOpponent";
+    string _sleeveMainKey = "SleeveMain";
+    string _sleeveEggKey = "SleeveEgg";
+    string _profileIconKey = "ProfileIcon";
+
+    public void SavePlayMatYou()
+    {
+        PlayerPrefs.SetString(_playMatYouKey, playMatYou ?? DefaultPlayMatYou);
+        PlayerPrefs.Save();
+    }
+
+    public void SavePlayMatOpponent()
+    {
+        PlayerPrefs.SetString(_playMatOpponentKey, playMatOpponent ?? DefaultPlayMatOpponent);
+        PlayerPrefs.Save();
+    }
+
+    public void SaveSleeveMain()
+    {
+        PlayerPrefs.SetString(_sleeveMainKey, sleeveMain ?? DefaultSleeveMain);
+        PlayerPrefs.Save();
+    }
+
+    public void SaveSleeveEgg()
+    {
+        PlayerPrefs.SetString(_sleeveEggKey, sleeveEgg ?? DefaultSleeveEgg);
+        PlayerPrefs.Save();
+    }
+
+    public void SaveProfileIcon()
+    {
+        PlayerPrefs.SetString(_profileIconKey, profileIcon ?? DefaultProfileIcon);
+        PlayerPrefs.Save();
+    }
+
+    public void LoadPlayAreaCosmetics()
+    {
+        playMatYou = PlayerPrefs.GetString(_playMatYouKey, DefaultPlayMatYou);
+        playMatOpponent = PlayerPrefs.GetString(_playMatOpponentKey, DefaultPlayMatOpponent);
+        sleeveMain = PlayerPrefs.GetString(_sleeveMainKey, DefaultSleeveMain);
+        sleeveEgg = PlayerPrefs.GetString(_sleeveEggKey, DefaultSleeveEgg);
+        profileIcon = PlayerPrefs.GetString(_profileIconKey, DefaultProfileIcon);
+
+        if (string.IsNullOrEmpty(playMatYou))
+            playMatYou = DefaultPlayMatYou;
+        if (string.IsNullOrEmpty(playMatOpponent))
+            playMatOpponent = DefaultPlayMatOpponent;
+        if (string.IsNullOrEmpty(sleeveMain))
+            sleeveMain = DefaultSleeveMain;
+        if (string.IsNullOrEmpty(sleeveEgg))
+            sleeveEgg = DefaultSleeveEgg;
+        if (string.IsNullOrEmpty(profileIcon))
+            profileIcon = DefaultProfileIcon;
+        else
+            profileIcon = ProfileIconUtility.SanitizeId(profileIcon);
+    }
+
+    public async Task ApplyPlayAreaCosmetics()
+    {
+        LoadPlayAreaCosmetics();
+
+        Sprite reverseCardSprite = await StreamingAssetsUtility.GetSprite(sleeveMain);
+        if (reverseCardSprite == null && sleeveMain != DefaultSleeveMain)
+            reverseCardSprite = await StreamingAssetsUtility.GetSprite(DefaultSleeveMain);
+        if (reverseCardSprite != null)
+            ReverseCard = reverseCardSprite;
+
+        Sprite reverseDigieggCardSprite = await StreamingAssetsUtility.GetSprite(sleeveEgg);
+        if (reverseDigieggCardSprite == null && sleeveEgg != DefaultSleeveEgg)
+            reverseDigieggCardSprite = await StreamingAssetsUtility.GetSprite(DefaultSleeveEgg);
+        if (reverseDigieggCardSprite != null)
+            ReverseCard_Digitama = reverseDigieggCardSprite;
+
+        if (GManager.instance != null)
+        {
+            if (GManager.instance.You != null)
+            {
+                await GManager.instance.You.SetOriginalPlayMat();
+                GManager.instance.You.SetPlayerUI();
+            }
+
+            if (GManager.instance.Opponent != null)
+            {
+                await GManager.instance.Opponent.SetOriginalPlayMat();
+                GManager.instance.Opponent.SetPlayerUI();
+            }
+        }
+
+        // === DCGO-CUSTOM:profileicon begin ===
+        await RefreshProfileIcons();
+        // === DCGO-CUSTOM:profileicon end ===
+    }
+
+    public async Task SetProfileIcon(string iconId)
+    {
+        profileIcon = ProfileIconUtility.SanitizeId(iconId);
+        SaveProfileIcon();
+        ProfileIconUtility.PublishLocalToPhoton();
+        ProfileIconUtility.NotifyChanged();
+        await RefreshProfileIcons();
+    }
+
+    public async Task RefreshProfileIcons()
+    {
+        if (Opening.instance != null && Opening.instance.home != null && Opening.instance.home.playerInfo != null)
+            await ProfileIconUtility.ApplyHomeIcon(Opening.instance.home.playerInfo);
+
+        if (GManager.instance == null)
+            return;
+
+        if (GManager.instance.You != null)
+            await ProfileIconUtility.ApplyMatchIcon(GManager.instance.You, profileIcon);
+
+        if (GManager.instance.Opponent != null)
+        {
+            string opponentId = GManager.instance.Opponent.ProfileIconId;
+            if (string.IsNullOrEmpty(opponentId))
+                opponentId = DefaultProfileIcon;
+            await ProfileIconUtility.ApplyMatchIcon(GManager.instance.Opponent, opponentId);
+        }
+    }
+
+    public async Task SetPlayMatYou(string textureName)
+    {
+        if (string.IsNullOrEmpty(textureName))
+            textureName = DefaultPlayMatYou;
+
+        playMatYou = textureName;
+        SavePlayMatYou();
+        await ApplyPlayAreaCosmetics();
+    }
+
+    public async Task SetPlayMatOpponent(string textureName)
+    {
+        if (string.IsNullOrEmpty(textureName))
+            textureName = DefaultPlayMatOpponent;
+
+        playMatOpponent = textureName;
+        SavePlayMatOpponent();
+        await ApplyPlayAreaCosmetics();
+    }
+
+    public async Task SetSleeveMain(string textureName)
+    {
+        if (string.IsNullOrEmpty(textureName))
+            textureName = DefaultSleeveMain;
+
+        sleeveMain = textureName;
+        SaveSleeveMain();
+        await ApplyPlayAreaCosmetics();
+    }
+
+    public async Task SetSleeveEgg(string textureName)
+    {
+        if (string.IsNullOrEmpty(textureName))
+            textureName = DefaultSleeveEgg;
+
+        sleeveEgg = textureName;
+        SaveSleeveEgg();
+        await ApplyPlayAreaCosmetics();
+    }
+    #endregion
+    // === DCGO-CUSTOM:playarea end ===
 
     #region Sound volume
     public float BGMVolume { get; set; }
@@ -2583,6 +2806,15 @@ public class PhotonUtility
         {
             hash.Add(ContinuousController.PlayerNameKey, ContinuousController.instance.PlayerName);
         }
+
+        // === DCGO-CUSTOM:profileicon begin ===
+        ContinuousController.instance?.LoadPlayAreaCosmetics();
+        string iconId = ProfileIconUtility.GetLocalId();
+        if (hash.ContainsKey(ContinuousController.ProfileIconKey))
+            hash[ContinuousController.ProfileIconKey] = iconId;
+        else
+            hash.Add(ContinuousController.ProfileIconKey, iconId);
+        // === DCGO-CUSTOM:profileicon end ===
 
         PhotonNetwork.LocalPlayer.SetCustomProperties(hash);
 

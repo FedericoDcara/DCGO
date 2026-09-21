@@ -10,6 +10,9 @@ public class OptionPanel : OffAnimation
     [SerializeField] GraphicsOptionPanel _graphicsOptionPanel;
     [SerializeField] ServerRegionPanel _serverRegionPanel;
     [SerializeField] LanguagePanel _languagePanel;
+    // === DCGO-CUSTOM:playarea begin ===
+    [SerializeField] PlayAreaOptionPanel _playAreaOptionPanel;
+    // === DCGO-CUSTOM:playarea end ===
     [SerializeField] Animator _anim;
     bool _isOpen = false;
 
@@ -43,6 +46,10 @@ public class OptionPanel : OffAnimation
         _anim.SetInteger(OpenHash, 1);
         _anim.SetInteger(CloseHash, 0);
 
+        // === DCGO-CUSTOM:playarea begin ===
+        EnsurePlayAreaOptionPanel();
+        // === DCGO-CUSTOM:playarea end ===
+
         if (_volumePanel != null)
         {
             _volumePanel.Off();
@@ -72,6 +79,13 @@ public class OptionPanel : OffAnimation
         {
             _languagePanel.Off();
         }
+
+        // === DCGO-CUSTOM:playarea begin ===
+        if (_playAreaOptionPanel != null)
+        {
+            _playAreaOptionPanel.Off();
+        }
+        // === DCGO-CUSTOM:playarea end ===
     }
 
     public void Close()
@@ -137,6 +151,13 @@ public class OptionPanel : OffAnimation
             }
         }
 
+        // === DCGO-CUSTOM:playarea begin ===
+        if (_playAreaOptionPanel != null && _playAreaOptionPanel.IsOpen)
+        {
+            playSE = true;
+        }
+        // === DCGO-CUSTOM:playarea end ===
+
         Close_(playSE);
 
         if (_resizeWindowPanel != null)
@@ -168,6 +189,13 @@ public class OptionPanel : OffAnimation
         {
             _languagePanel.Close_(false);
         }
+
+        // === DCGO-CUSTOM:playarea begin ===
+        if (_playAreaOptionPanel != null)
+        {
+            _playAreaOptionPanel.Close_(false);
+        }
+        // === DCGO-CUSTOM:playarea end ===
     }
 
     public void Close_(bool playSE)
@@ -222,7 +250,33 @@ public class OptionPanel : OffAnimation
         {
             _languagePanel.Init();
         }
+
+        // === DCGO-CUSTOM:playarea begin ===
+        EnsurePlayAreaOptionPanel();
+        if (_playAreaOptionPanel != null)
+        {
+            _playAreaOptionPanel.Init();
+        }
+        // === DCGO-CUSTOM:playarea end ===
     }
+
+    // === DCGO-CUSTOM:playarea begin ===
+    void EnsurePlayAreaOptionPanel()
+    {
+        if (_playAreaOptionPanel == null)
+        {
+            _playAreaOptionPanel = PlayAreaOptionPanel.EnsureExists(this);
+        }
+    }
+
+    public void OpenProfileIconPicker()
+    {
+        EnsurePlayAreaOptionPanel();
+        Open();
+        if (_playAreaOptionPanel != null)
+            _playAreaOptionPanel.OpenProfileIcons();
+    }
+    // === DCGO-CUSTOM:playarea end ===
 
     public void OnClickExitGameButton()
     {

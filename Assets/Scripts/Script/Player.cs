@@ -94,6 +94,10 @@ public class Player : MonoBehaviour
             PlayerNameText.transform.parent.gameObject.SetActive(false);
         }
 
+        // === DCGO-CUSTOM:profileicon begin ===
+        ApplyProfileIcon();
+        // === DCGO-CUSTOM:profileicon end ===
+
         OffHatchObject();
 
         if (HatchObject != null)
@@ -574,18 +578,38 @@ public class Player : MonoBehaviour
         if (PlayMatSpriteRenderer_Original != null)
         {
             string filiName;
+            string fallbackName;
 
             if (isYou)
             {
-                filiName = "PlayMat_You";
+                // === DCGO-CUSTOM:playarea begin ===
+                filiName = ContinuousController.instance != null
+                    ? ContinuousController.instance.playMatYou
+                    : ContinuousController.DefaultPlayMatYou;
+                if (string.IsNullOrEmpty(filiName))
+                    filiName = ContinuousController.DefaultPlayMatYou;
+                fallbackName = ContinuousController.DefaultPlayMatYou;
+                // === DCGO-CUSTOM:playarea end ===
             }
 
             else
             {
-                filiName = "PlayMat_Opponent";
+                // === DCGO-CUSTOM:playarea begin ===
+                filiName = ContinuousController.instance != null
+                    ? ContinuousController.instance.playMatOpponent
+                    : ContinuousController.DefaultPlayMatOpponent;
+                if (string.IsNullOrEmpty(filiName))
+                    filiName = ContinuousController.DefaultPlayMatOpponent;
+                fallbackName = ContinuousController.DefaultPlayMatOpponent;
+                // === DCGO-CUSTOM:playarea end ===
             }
 
             Sprite playMatSprite = await StreamingAssetsUtility.GetSprite(filiName);
+
+            // === DCGO-CUSTOM:playarea begin ===
+            if (playMatSprite == null && filiName != fallbackName)
+                playMatSprite = await StreamingAssetsUtility.GetSprite(fallbackName);
+            // === DCGO-CUSTOM:playarea end ===
 
             if (playMatSprite != null)
             {
@@ -743,6 +767,18 @@ public class Player : MonoBehaviour
     /// <summary>MMR shown on the battle name plate (ranked only).</summary>
     public int BattleDisplayedMmr { get; set; } = RankedRating.DefaultMmr;
     // === DCGO-CUSTOM:ranked end ===
+
+    // === DCGO-CUSTOM:profileicon begin ===
+    public string ProfileIconId { get; set; } = ProfileIconUtility.DefaultId;
+
+    public void ApplyProfileIcon()
+    {
+        string id = isYou && ContinuousController.instance != null
+            ? ContinuousController.instance.profileIcon
+            : ProfileIconId;
+        _ = ProfileIconUtility.ApplyMatchIcon(this, id);
+    }
+    // === DCGO-CUSTOM:profileicon end ===
     #endregion
 
     #region 勝利数

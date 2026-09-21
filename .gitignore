@@ -80,6 +80,20 @@ crashlytics-build.properties
 /.idea
 /.idea/.idea.DCGO
 
+# Downloaded Project Drasil profile icons (re-fetch via tools/DownloadDrasilProfileIcons.ps1)
+# Keep catalog.json / README.txt tracked.
+/Assets/StreamingAssets/Textures/ProfileIcons/*.png
+/Assets/StreamingAssets/Textures/ProfileIcons/*.png.meta
+/Assets/StreamingAssets/Textures/ProfileIcons/*.jpg
+/Assets/StreamingAssets/Textures/ProfileIcons/*.jpg.meta
+/Assets/StreamingAssets/Textures/ProfileIcons/*.jpeg
+/Assets/StreamingAssets/Textures/ProfileIcons/*.jpeg.meta
+
+# Reactive match music audio (drop-in packs under MatchMusic/packN/)
+# Keep catalog.json / README.txt tracked.
+/Assets/StreamingAssets/Audio/MatchMusic/**/*.mp3
+/Assets/StreamingAssets/Audio/MatchMusic/**/*.mp3.meta
+
 #Open Source Locked
 /Assets/AddOn/@ Xxuebi
 /Assets/AddOn/Energy Shield Shader

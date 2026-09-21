@@ -40,6 +40,10 @@ public class PlayerInfo : MonoBehaviour
         RefreshRankedStatus();
         LoadRankedProfileAsync();
         // === DCGO-CUSTOM:ranked end ===
+
+        // === DCGO-CUSTOM:profileicon begin ===
+        EnsureProfileIcon();
+        // === DCGO-CUSTOM:profileicon end ===
     }
 
     // === DCGO-CUSTOM:ranked begin ===
@@ -232,4 +236,38 @@ public class PlayerInfo : MonoBehaviour
 
         SetPlayerInfo();
     }
+
+    // === DCGO-CUSTOM:profileicon begin ===
+    void OnEnable()
+    {
+        ProfileIconUtility.IconChanged += OnProfileIconChanged;
+    }
+
+    void OnDisable()
+    {
+        ProfileIconUtility.IconChanged -= OnProfileIconChanged;
+    }
+
+    void OnProfileIconChanged()
+    {
+        EnsureProfileIcon();
+    }
+
+    void EnsureProfileIcon()
+    {
+        if (ContinuousController.instance != null)
+            ContinuousController.instance.LoadPlayAreaCosmetics();
+
+        ProfileIconUtility.EnsureHomeIconButton(this, OnClickProfileIcon);
+        _ = ProfileIconUtility.ApplyHomeIcon(this);
+    }
+
+    void OnClickProfileIcon()
+    {
+        if (Opening.instance != null)
+            Opening.instance.PlayDecisionSE();
+
+        ProfileIconUtility.OpenPicker();
+    }
+    // === DCGO-CUSTOM:profileicon end ===
 }

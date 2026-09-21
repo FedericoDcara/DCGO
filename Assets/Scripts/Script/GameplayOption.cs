@@ -1,6 +1,9 @@
+using System;
 using Photon.Pun;
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
+
 public class GameplayOption : OffAnimation
 {
     private static readonly int CloseHash = Animator.StringToHash("Close");
@@ -18,6 +21,11 @@ public class GameplayOption : OffAnimation
     [SerializeField] Toggle _autoMaxCardCountToggle;
     [SerializeField] Toggle _autoHatchToggle;
     [SerializeField] Toggle _banlistToggle;
+
+    // === DCGO-CUSTOM:matchmusic begin ===
+    Toggle _reactiveMatchMusicToggle;
+    bool _reactiveToggleInjected;
+    // === DCGO-CUSTOM:matchmusic end ===
 
     public void Close()
     {
@@ -50,6 +58,10 @@ public class GameplayOption : OffAnimation
 
     public void Open()
     {
+        // === DCGO-CUSTOM:matchmusic begin ===
+        EnsureReactiveMatchMusicToggle();
+        // === DCGO-CUSTOM:matchmusic end ===
+
         if (ContinuousController.instance != null)
         {
             OptionUtility.InitToggle(
@@ -124,6 +136,14 @@ public class GameplayOption : OffAnimation
                value: ContinuousController.instance.useBanlist
            );
 
+            // === DCGO-CUSTOM:matchmusic begin ===
+            OptionUtility.InitToggle(
+                toggle: _reactiveMatchMusicToggle,
+                onToggleChanged: OnReactiveMatchMusicToggleChanged,
+                value: ContinuousController.instance.useReactiveMatchMusic
+            );
+            // === DCGO-CUSTOM:matchmusic end ===
+
             if (ContinuousController.instance.BanList.Restrictions.Count == 0 || PhotonNetwork.InRoom)
                 _banlistToggle.interactable = false;
         }
@@ -132,6 +152,139 @@ public class GameplayOption : OffAnimation
         _anim.SafeSetInt(OpenHash, 1);
         _anim.SafeSetInt(CloseHash, 0);
     }
+
+    // === DCGO-CUSTOM:matchmusic begin ===
+    void EnsureReactiveMatchMusicToggle()
+    {
+        if (_reactiveToggleInjected && _reactiveMatchMusicToggle != null)
+        {
+            Transform existingRow = FindContentRow(_reactiveMatchMusicToggle.transform);
+            if (existingRow != null)
+                ApplyReactiveMatchMusicLabel(existingRow);
+            return;
+        }
+
+        Toggle template = _showCutInAnimationToggle != null
+            ? _showCutInAnimationToggle
+            : _autoHatchToggle != null ? _autoHatchToggle : _banlistToggle;
+
+        if (template == null)
+            return;
+
+        // Rows live under Content (GridLayoutGroup). The Toggle is nested:
+        // Content / ShowCutInAnimation / ShowCutInAnimationButton / Toggle
+        // Cloning the Toggle alone nests a duplicate switch on the same row.
+        Transform templateRow = FindContentRow(template.transform);
+        if (templateRow == null)
+            return;
+
+        Transform content = templateRow.parent;
+        if (content == null)
+            return;
+
+        GameObject clone = Instantiate(templateRow.gameObject, content);
+        clone.name = "ReactiveMatchMusic";
+        clone.SetActive(true);
+        clone.transform.SetSiblingIndex(templateRow.GetSiblingIndex() + 1);
+
+        _reactiveMatchMusicToggle = clone.GetComponentInChildren<Toggle>(true);
+        if (_reactiveMatchMusicToggle == null)
+        {
+            Destroy(clone);
+            return;
+        }
+
+        _reactiveMatchMusicToggle.onValueChanged.RemoveAllListeners();
+
+        // Row buttons use persistent Inspector onClick (HandleShowCutIn...); replace them.
+        foreach (Button button in clone.GetComponentsInChildren<Button>(true))
+        {
+            button.onClick = new Button.ButtonClickedEvent();
+            button.onClick.AddListener(HandleReactiveMatchMusicToggle);
+        }
+
+        ApplyReactiveMatchMusicLabel(clone.transform);
+        if (content is RectTransform contentRt)
+            LayoutRebuilder.ForceRebuildLayoutImmediate(contentRt);
+        _reactiveToggleInjected = true;
+    }
+
+    /// <summary>
+    /// Walks up from a nested toggle to the direct child of the scroll Content grid.
+    /// </summary>
+    static Transform FindContentRow(Transform from)
+    {
+        if (from == null)
+            return null;
+
+        Transform t = from;
+        while (t.parent != null)
+        {
+            if (t.parent.name == "Content" || t.parent.GetComponent<GridLayoutGroup>() != null)
+                return t;
+            t = t.parent;
+        }
+
+        // Fallback: grandparent of the toggle (Button's parent is usually the row).
+        if (from.parent != null && from.parent.parent != null)
+            return from.parent.parent;
+
+        return null;
+    }
+
+    void ApplyReactiveMatchMusicLabel(Transform root)
+    {
+        if (root == null)
+            return;
+
+        string eng = "Reactive Match Music";
+        string jpn = "リアクティブ対戦BGM";
+        string localized = LocalizeUtility.GetLocalizedString(EngMessage: eng, JpnMessage: jpn);
+
+        foreach (LocalizeTMPro localize in root.GetComponentsInChildren<LocalizeTMPro>(true))
+        {
+            localize._text_ENG = eng;
+            localize._text_JPN = jpn;
+        }
+
+        foreach (Text text in root.GetComponentsInChildren<Text>(true))
+        {
+            if (string.Equals(text.text, "Switch_01", StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (text.gameObject.name.IndexOf("Icon", StringComparison.OrdinalIgnoreCase) >= 0)
+                continue;
+            text.text = localized;
+        }
+
+        foreach (TMP_Text tmp in root.GetComponentsInChildren<TMP_Text>(true))
+        {
+            if (string.Equals(tmp.text, "Switch_01", StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (tmp.gameObject.name.IndexOf("Icon", StringComparison.OrdinalIgnoreCase) >= 0)
+                continue;
+            tmp.text = localized;
+        }
+    }
+
+    public void OnReactiveMatchMusicToggleChanged(bool value)
+    {
+        if (ContinuousController.instance == null) return;
+
+        OptionUtility.OnToggleChanged(
+            value: value,
+            toggle: _reactiveMatchMusicToggle,
+            onToggleChanged: OnReactiveMatchMusicToggleChanged,
+            settingRef: ref ContinuousController.instance.useReactiveMatchMusic,
+            saveAction: ContinuousController.instance.SaveUseReactiveMatchMusic
+        );
+    }
+
+    public void HandleReactiveMatchMusicToggle()
+    {
+        if (_reactiveMatchMusicToggle == null) return;
+        OnReactiveMatchMusicToggleChanged(!_reactiveMatchMusicToggle.isOn);
+    }
+    // === DCGO-CUSTOM:matchmusic end ===
 
     #region Show cut in animation
     public void OnShowCutInAnimationToggleChanged(bool value)

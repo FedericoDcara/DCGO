@@ -243,6 +243,10 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
                 StartCoroutine(RefreshRankedNamePlatesLater(MasterPlayer, nonMasterPlayer));
             }
             // === DCGO-CUSTOM:ranked end ===
+
+            // === DCGO-CUSTOM:profileicon begin ===
+            StartCoroutine(RefreshProfileIconsLater(MasterPlayer, nonMasterPlayer));
+            // === DCGO-CUSTOM:profileicon end ===
         }
         // === DCGO-CUSTOM:replay end ===
         #endregion
@@ -364,6 +368,12 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
                 player.PlayerNameText.gameObject.SetActive(true);
                 player.PlayerNameText.text = player.PlayerName;
             }
+
+            // === DCGO-CUSTOM:profileicon begin ===
+            if (player.isYou && ContinuousController.instance != null)
+                player.ProfileIconId = ContinuousController.instance.profileIcon;
+            player.ApplyProfileIcon();
+            // === DCGO-CUSTOM:profileicon end ===
         }
         // === DCGO-CUSTOM:replay end ===
 
@@ -411,6 +421,16 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
             // === DCGO-CUSTOM:ranked end ===
 
             player.PlayerNameText.text = display;
+
+            // === DCGO-CUSTOM:profileicon begin ===
+            if (player.isYou && ContinuousController.instance != null)
+                player.ProfileIconId = ContinuousController.instance.profileIcon;
+            else if (GManager.instance != null && GManager.instance.IsAI)
+                player.ProfileIconId = ProfileIconUtility.BuiltinId(1);
+            else
+                player.ProfileIconId = ProfileIconUtility.ReadPhotonId(photonPlayer);
+            player.ApplyProfileIcon();
+            // === DCGO-CUSTOM:profileicon end ===
         }
 
         // === DCGO-CUSTOM:ranked begin ===
@@ -449,6 +469,39 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
                    photonPlayer.CustomProperties.ContainsKey(RankedKeys.MmrProperty);
         }
         // === DCGO-CUSTOM:ranked end ===
+
+        // === DCGO-CUSTOM:profileicon begin ===
+        IEnumerator RefreshProfileIconsLater(
+            Photon.Realtime.Player masterPhoton,
+            Photon.Realtime.Player nonMasterPhoton)
+        {
+            const float totalWait = 1.5f;
+            const float step = 0.25f;
+            float waited = 0f;
+
+            while (waited < totalWait)
+            {
+                yield return new WaitForSeconds(step);
+                waited += step;
+
+                bool bothHaveIcon =
+                    (masterPhoton == null || PhotonHasProfileIcon(masterPhoton)) &&
+                    (nonMasterPhoton == null || PhotonHasProfileIcon(nonMasterPhoton));
+                if (bothHaveIcon)
+                    break;
+            }
+
+            ApplyPlayerNamePlate(0, masterPhoton);
+            ApplyPlayerNamePlate(1, nonMasterPhoton);
+        }
+
+        bool PhotonHasProfileIcon(Photon.Realtime.Player photonPlayer)
+        {
+            return photonPlayer != null &&
+                   photonPlayer.CustomProperties != null &&
+                   photonPlayer.CustomProperties.ContainsKey(ContinuousController.ProfileIconKey);
+        }
+        // === DCGO-CUSTOM:profileicon end ===
         #endregion
         #endregion
 
@@ -526,10 +579,16 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
 
         StartCoroutine(GameStateMachine());
 
-        if (GManager.instance.bgms.Count >= 1)
+        // === DCGO-CUSTOM:matchmusic begin ===
+        if (ContinuousController.instance != null && ContinuousController.instance.useReactiveMatchMusic)
+        {
+            MatchMusicController.EnsureExists().StartForMatch();
+        }
+        else if (GManager.instance.bgms.Count >= 1)
         {
             GManager.instance.BattleBGM.StartPlayBGM(GManager.instance.bgms[UnityEngine.Random.Range(0, GManager.instance.bgms.Count)]);
         }
+        // === DCGO-CUSTOM:matchmusic end ===
     }
 
     IEnumerator ResolveFirstPlayerCoroutine()
@@ -3868,6 +3927,11 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
         // === DCGO-CUSTOM:ranked end ===
 
         ContinuousController.instance.StartCoroutine(GManager.instance.BattleBGM.FadeOut(1));
+
+        // === DCGO-CUSTOM:matchmusic begin ===
+        if (MatchMusicController.instance != null)
+            MatchMusicController.instance.StopReacting();
+        // === DCGO-CUSTOM:matchmusic end ===
 
         if (GManager.instance.isAuto && GManager.instance.IsAI)
         {
