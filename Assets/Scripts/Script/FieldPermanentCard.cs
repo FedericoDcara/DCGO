@@ -101,6 +101,7 @@ public class FieldPermanentCard : MonoBehaviour
     public UnityAction<FieldPermanentCard> OnClickAction;
     public Permanent ThisPermanent { get; set; }
     public bool IsEffectPlaying { get; set; }
+    GameObject _lastingDebuff;
     private void Awake()
     {
         RemoveSelectEffect();
@@ -450,6 +451,7 @@ public class FieldPermanentCard : MonoBehaviour
                 LevelText.transform.parent.gameObject.SetActive(false);
                 EvoRootCountText.transform.parent.gameObject.SetActive(false);
                 LinkedObject.SetActive(false);
+                SetLastingDebuffVisible(false);
                 return;
             }
 
@@ -603,7 +605,128 @@ public class FieldPermanentCard : MonoBehaviour
 
                 BlockerEffect.SetActive(isActive);
             }
+
+            SetLastingDebuffVisible(LastingDebuff.AppliesTo(ThisPermanent));
         }
+    }
+
+    void SetLastingDebuffVisible(bool visible)
+    {
+        if (!visible)
+        {
+            if (_lastingDebuff != null)
+            {
+                _lastingDebuff.SetActive(false);
+            }
+
+            return;
+        }
+
+        EnsureLastingDebuffMarker();
+        if (_lastingDebuff != null && !_lastingDebuff.activeSelf)
+        {
+            _lastingDebuff.SetActive(true);
+        }
+    }
+
+    void EnsureLastingDebuffMarker()
+    {
+        if (_lastingDebuff != null)
+        {
+            return;
+        }
+
+        Transform parent = BlockerEffect != null ? BlockerEffect.transform.parent : transform;
+        _lastingDebuff = new GameObject("LastingDebuff", typeof(RectTransform));
+        _lastingDebuff.layer = gameObject.layer;
+        _lastingDebuff.transform.SetParent(parent, false);
+
+        RectTransform rect = _lastingDebuff.GetComponent<RectTransform>();
+        RectTransform blockerRect = BlockerEffect != null ? BlockerEffect.GetComponent<RectTransform>() : null;
+        if (blockerRect != null)
+        {
+            rect.anchorMin = blockerRect.anchorMin;
+            rect.anchorMax = blockerRect.anchorMax;
+            rect.pivot = blockerRect.pivot;
+            rect.anchoredPosition = blockerRect.anchoredPosition;
+            rect.sizeDelta = blockerRect.sizeDelta;
+            rect.localRotation = blockerRect.localRotation;
+            rect.localScale = blockerRect.localScale;
+            _lastingDebuff.transform.SetSiblingIndex(BlockerEffect.transform.GetSiblingIndex());
+        }
+        else
+        {
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.anchoredPosition = new Vector2(0f, 8f);
+            rect.sizeDelta = new Vector2(150f, 165f);
+        }
+
+        Sprite halo = null;
+        Sprite fill = null;
+        Sprite rim = null;
+        if (BlockerEffect != null)
+        {
+            Image[] images = BlockerEffect.GetComponentsInChildren<Image>(true);
+            for (int i = 0; i < images.Length; i++)
+            {
+                if (images[i].name == "Halo")
+                {
+                    halo = images[i].sprite;
+                }
+                else if (images[i].name == "Fill")
+                {
+                    fill = images[i].sprite;
+                }
+                else if (images[i].name == "Rim")
+                {
+                    rim = images[i].sprite;
+                }
+            }
+        }
+
+        AddDebuffImage("Halo", halo, new Color(1f, 0.12f, 0.16f, 0.72f), new Vector2(175f, 190f));
+        AddDebuffImage("Fill", fill, new Color(0.75f, 0.02f, 0.08f, 0.38f), new Vector2(150f, 165f));
+        AddDebuffImage("Rim", rim, new Color(1f, 0.28f, 0.18f, 0.95f), new Vector2(150f, 165f));
+        _lastingDebuff.SetActive(false);
+    }
+
+    void AddDebuffImage(string name, Sprite sprite, Color color, Vector2 size)
+    {
+        GameObject child = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        child.layer = _lastingDebuff.layer;
+        child.transform.SetParent(_lastingDebuff.transform, false);
+
+        RectTransform rect = child.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0.5f, 0.5f);
+        rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.anchoredPosition = Vector2.zero;
+        rect.sizeDelta = size;
+
+        Image image = child.GetComponent<Image>();
+        image.sprite = sprite != null ? sprite : WhiteSprite();
+        image.color = color;
+        image.raycastTarget = false;
+        image.maskable = false;
+        image.preserveAspect = sprite != null;
+    }
+
+    static Sprite _whiteSprite;
+
+    static Sprite WhiteSprite()
+    {
+        if (_whiteSprite != null)
+        {
+            return _whiteSprite;
+        }
+
+        Texture2D texture = new Texture2D(1, 1);
+        texture.SetPixel(0, 0, Color.white);
+        texture.Apply();
+        _whiteSprite = Sprite.Create(texture, new Rect(0f, 0f, 1f, 1f), new Vector2(0.5f, 0.5f));
+        return _whiteSprite;
     }
     #endregion
 

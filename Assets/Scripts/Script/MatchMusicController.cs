@@ -285,7 +285,28 @@ public class MatchMusicController : MonoBehaviour
 
     AudioClip FallbackInspectorClip(Intensity intensity)
     {
-        if (GManager.instance == null || GManager.instance.bgms == null)
+        if (GManager.instance == null)
+            return null;
+
+        // Preferred defaults: BGM_Battle3 / BGM_Battle4 / BGM_Battle
+        switch (intensity)
+        {
+            case Intensity.Half:
+                if (GManager.instance.reactiveMatchMusicHalf != null)
+                    return GManager.instance.reactiveMatchMusicHalf;
+                break;
+            case Intensity.Critical:
+                if (GManager.instance.reactiveMatchMusicCritical != null)
+                    return GManager.instance.reactiveMatchMusicCritical;
+                break;
+            default:
+                if (GManager.instance.reactiveMatchMusicFull != null)
+                    return GManager.instance.reactiveMatchMusicFull;
+                break;
+        }
+
+        // Last resort: generic battle bgms list
+        if (GManager.instance.bgms == null)
             return null;
 
         int index = (int)intensity;
@@ -296,15 +317,15 @@ public class MatchMusicController : MonoBehaviour
 
     void ApplyInspectorFallbacks()
     {
-        if (GManager.instance == null || GManager.instance.bgms == null)
+        if (GManager.instance == null)
             return;
 
-        if (_fullClip == null && GManager.instance.bgms.Count > 0)
-            _fullClip = GManager.instance.bgms[0];
-        if (_halfClip == null && GManager.instance.bgms.Count > 1)
-            _halfClip = GManager.instance.bgms[1];
-        if (_criticalClip == null && GManager.instance.bgms.Count > 2)
-            _criticalClip = GManager.instance.bgms[2];
+        if (_fullClip == null)
+            _fullClip = FallbackInspectorClip(Intensity.Full);
+        if (_halfClip == null)
+            _halfClip = FallbackInspectorClip(Intensity.Half);
+        if (_criticalClip == null)
+            _criticalClip = FallbackInspectorClip(Intensity.Critical);
     }
 
     bool AllClipsReady()

@@ -729,13 +729,32 @@ public class StreamingAssetsUtility
 
     // === DCGO-CUSTOM:matchmusic begin ===
     /// <summary>
+    /// PC drop-in next to DCGO.exe: {exe}/Assets/Audio/MatchMusic.
+    /// Editor uses StreamingAssets. Android uses persistentDataPath.
+    /// </summary>
+    public static string GetMatchMusicWritableDir()
+    {
+        string path;
+#if UNITY_EDITOR
+        path = Path.Combine(Application.streamingAssetsPath, "Audio", MatchMusicFolder).Replace("\\", "/");
+#elif UNITY_ANDROID || UNITY_IOS
+        path = Path.Combine(Application.persistentDataPath, "Audio", MatchMusicFolder).Replace("\\", "/");
+#else
+        string exeDir = Directory.GetParent(Application.dataPath)?.FullName ?? ".";
+        path = Path.Combine(exeDir, "Assets", "Audio", MatchMusicFolder).Replace("\\", "/");
+#endif
+        EnsureDirectoryExists(path);
+        return path;
+    }
+
+    /// <summary>
     /// Seed MatchMusic catalog + listed clips into persistent storage on Android.
     /// Ensures the drop-in folder exists on PC/editor.
     /// </summary>
     public static async Task EnsureMatchMusicSeeded()
     {
 #if !UNITY_ANDROID || UNITY_EDITOR
-        EnsureDirectoryExists(Path.Combine(GetStreamingAssetPath("Audio", false), MatchMusicFolder).Replace("\\", "/"));
+        GetMatchMusicWritableDir();
         string saDir = Path.Combine(Application.streamingAssetsPath, "Audio", MatchMusicFolder).Replace("\\", "/");
         EnsureDirectoryExists(saDir);
         await Task.Yield();
@@ -813,7 +832,7 @@ public class StreamingAssetsUtility
         await EnsureMatchMusicSeeded();
 
         string relative = Path.Combine("Audio", MatchMusicFolder, "catalog.json").Replace("\\", "/");
-        string writable = Path.Combine(GetStreamingAssetPath("Audio", false), MatchMusicFolder, "catalog.json").Replace("\\", "/");
+        string writable = Path.Combine(GetMatchMusicWritableDir(), "catalog.json").Replace("\\", "/");
         byte[] data = null;
         if (File.Exists(writable))
             data = await ReadFile(writable);
@@ -860,7 +879,8 @@ public class StreamingAssetsUtility
         if (string.IsNullOrEmpty(relative))
             return null;
 
-        string writable = Path.Combine(GetStreamingAssetPath("Audio", false), MatchMusicFolder, relative).Replace("\\", "/");
+        string writableRoot = GetMatchMusicWritableDir();
+        string writable = Path.Combine(writableRoot, relative).Replace("\\", "/");
         if (File.Exists(writable))
         {
             AudioClip clip = await LoadAudioClipFromPath(writable, streamAudio: true);
@@ -873,8 +893,8 @@ public class StreamingAssetsUtility
         string baseName = Path.GetFileNameWithoutExtension(relative);
         string[] extensions = { ".ogg", ".mp3", ".wav" };
         string writableDir = string.IsNullOrEmpty(relativeDir)
-            ? Path.Combine(GetStreamingAssetPath("Audio", false), MatchMusicFolder).Replace("\\", "/")
-            : Path.Combine(GetStreamingAssetPath("Audio", false), MatchMusicFolder, relativeDir).Replace("\\", "/");
+            ? writableRoot
+            : Path.Combine(writableRoot, relativeDir).Replace("\\", "/");
 
         if (Directory.Exists(writableDir))
         {

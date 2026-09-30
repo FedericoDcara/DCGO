@@ -76,6 +76,7 @@ public static class WindowsStandaloneBuild
         }
 
         CopyPcRuntimeTextures(outputDir);
+        CopyPcRuntimeMatchMusic(outputDir);
 
         Debug.Log($"[WindowsStandaloneBuild] Success: {exePath} ({report.summary.totalSize} bytes)");
         return null;
@@ -95,6 +96,22 @@ public static class WindowsStandaloneBuild
         Directory.CreateDirectory(dest);
         CopyDirectorySkippingMeta(source, dest);
         Debug.Log($"[WindowsStandaloneBuild] Copied runtime textures to {dest}");
+    }
+
+    /// <summary>
+    /// Custom reactive music drop-in next to DCGO.exe:
+    /// Windows/Assets/Audio/MatchMusic (not the parent Builds/Assets folder).
+    /// </summary>
+    static void CopyPcRuntimeMatchMusic(string windowsOutputDir)
+    {
+        string source = Path.Combine(Application.streamingAssetsPath, "Audio", "MatchMusic");
+        if (!Directory.Exists(source))
+            return;
+
+        string dest = Path.GetFullPath(Path.Combine(windowsOutputDir, "Assets", "Audio", "MatchMusic"));
+        Directory.CreateDirectory(dest);
+        CopyDirectorySkippingMeta(source, dest);
+        Debug.Log($"[WindowsStandaloneBuild] Copied MatchMusic drop-in to {dest}");
     }
 
     static void CopyDirectorySkippingMeta(string sourceDir, string destDir)

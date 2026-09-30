@@ -185,6 +185,16 @@ public class GManager : MonoBehaviourPun
     [Header("BGM")]
     public List<AudioClip> bgms;
 
+    // === DCGO-CUSTOM:matchmusic begin ===
+    [Header("Reactive Match Music Defaults")]
+    [Tooltip("Used when StreamingAssets MatchMusic pack files are missing. Full security (5+).")]
+    public AudioClip reactiveMatchMusicFull;
+    [Tooltip("Used when StreamingAssets MatchMusic pack files are missing. Half security (2-4).")]
+    public AudioClip reactiveMatchMusicHalf;
+    [Tooltip("Used when StreamingAssets MatchMusic pack files are missing. Critical security (0-1).")]
+    public AudioClip reactiveMatchMusicCritical;
+    // === DCGO-CUSTOM:matchmusic end ===
+
     [Header("BGMObject")]
     public BGMObject BattleBGM;
 

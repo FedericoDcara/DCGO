@@ -198,22 +198,6 @@ public class SelectBattleMode : MonoBehaviour
         {
             selectBattleModeWindow.InfoText.text = $"{baseInfo}\n{rankLine}";
         }
-
-        // Append short tier/MMR under the Ranked Match button label (index 1).
-        if (selectBattleModeWindow != null &&
-            selectBattleModeWindow.Buttons != null &&
-            selectBattleModeWindow.Buttons.Count > 1 &&
-            profile != null)
-        {
-            var label = selectBattleModeWindow.Buttons[1].transform.GetChild(0).GetComponent<Text>();
-            if (label != null)
-            {
-                string modeName = LocalizeUtility.GetLocalizedString(
-                    EngMessage: "Ranked Match",
-                    JpnMessage: "ランクマッチ");
-                label.text = $"{modeName}\n{profile.FormatShort()}";
-            }
-        }
     }
     // === DCGO-CUSTOM:ranked end ===
 

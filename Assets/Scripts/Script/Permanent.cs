@@ -3263,6 +3263,26 @@ public class Permanent
     }
     #endregion
 
+    #region Has Execute
+    public bool HasExecute
+    {
+        get
+        {
+            foreach (ICardEffect cardEffect in EffectList(EffectTiming.OnEndTurn))
+            {
+                if (cardEffect is ActivateICardEffect
+                && cardEffect.EffectName == "Execute"
+                && cardEffect.CanTrigger(null))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
+    #endregion
+
 
     #region 消滅時効化を持つか
     public bool HasOnDeletionEffect

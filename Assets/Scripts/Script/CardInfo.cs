@@ -70,15 +70,15 @@ public class CardInfo : MonoBehaviour
                         InheritedEffectText.fontSharedMaterial = InheritedEffectMaterial;
 
                         if(!cardSource.IsLinked)
-                            InheritedEffectText.text = cardSource.InheritedEffectDiscription_ENG;
+                            InheritedEffectText.text = KeywordReminder.WrapKeywords(cardSource.InheritedEffectDiscription_ENG);
                         else
-                            InheritedEffectText.text = cardSource.LinkEffectDiscription;
+                            InheritedEffectText.text = KeywordReminder.WrapKeywords(cardSource.LinkEffectDiscription);
                     }
 
                     else
                     {
                         InheritedEffectText.font = InheritedEffectFont_JPN;
-                        InheritedEffectText.text = cardSource.InheritedEffectDiscription_JPN;
+                        InheritedEffectText.text = KeywordReminder.WrapKeywords(cardSource.InheritedEffectDiscription_JPN);
                     }
                 }
             }
@@ -118,6 +118,7 @@ public class CardInfo : MonoBehaviour
 
             //Link
             LinkBackground.SetActive(cardSource.IsLinked);
+            EnsureKeywordHover();
         }
 
         else
@@ -132,6 +133,23 @@ public class CardInfo : MonoBehaviour
                 BackGrounds[i].color = DataBase.CardColor_ColorDarkDictionary[CardColor.White];
             }
         }
+    }
+
+    void EnsureKeywordHover()
+    {
+        if (InheritedEffectText == null)
+        {
+            return;
+        }
+
+        KeywordTooltipHover hover = InheritedEffectText.GetComponent<KeywordTooltipHover>();
+        if (hover == null)
+        {
+            hover = InheritedEffectText.gameObject.AddComponent<KeywordTooltipHover>();
+        }
+
+        hover.CardInfoClickTarget = this;
+        hover.Bind();
     }
 
     public void CloseSoulInfo()

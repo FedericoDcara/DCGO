@@ -50,6 +50,10 @@ public class Opening : MonoBehaviour
 
     public Text VerText;
 
+    // === DCGO-CUSTOM:modversion begin ===
+    Text ModVersionText;
+    Button ModDownloadButton;
+    // === DCGO-CUSTOM:modversion end ===
     // === DCGO-CUSTOM:onlinecount begin ===
     Text OnlineCountText;
     Text RankedCountText;
@@ -424,11 +428,20 @@ public class Opening : MonoBehaviour
             HistoryButton.gameObject.SetActive(false);
         }
         // === DCGO-CUSTOM:replay end ===
+        // === DCGO-CUSTOM:modversion begin ===
+        if (ModDownloadButton != null)
+        {
+            ModDownloadButton.gameObject.SetActive(false);
+        }
+        // === DCGO-CUSTOM:modversion end ===
     }
 
     public void OnModeButtons()
     {
         ModeButtons.SetActive(true);
+        // === DCGO-CUSTOM:modversion begin ===
+        EnsureModVersionUi();
+        // === DCGO-CUSTOM:modversion end ===
         // === DCGO-CUSTOM:friends begin ===
         EnsureFriendsButton();
         // === DCGO-CUSTOM:friends end ===
@@ -526,6 +539,10 @@ public class Opening : MonoBehaviour
 
         VerText.text = $"Ver{ContinuousController.instance.GameVerString}";
 
+        // === DCGO-CUSTOM:modversion begin ===
+        EnsureModVersionUi();
+        // === DCGO-CUSTOM:modversion end ===
+
         deck.SetUpDeckMode();
 
         deck.OffDeck();
@@ -564,6 +581,154 @@ public class Opening : MonoBehaviour
         }
     }
 
+    // === DCGO-CUSTOM:modversion begin ===
+    public void EnsureModVersionUi()
+    {
+        if (VerText == null && canvasRect == null)
+        {
+            return;
+        }
+
+        Transform parent = VerText != null && VerText.transform.parent != null
+            ? VerText.transform.parent
+            : (canvasRect != null ? canvasRect.transform : null);
+        if (parent == null)
+        {
+            return;
+        }
+
+        var verRt = VerText != null ? VerText.GetComponent<RectTransform>() : null;
+
+        if (ModVersionText == null && VerText != null && verRt != null)
+        {
+            // Between official Ver and the online counter. Display only.
+            ModVersionText = CreateVerSiblingText("ModVersionText", parent, verRt, yOffset: 70f);
+        }
+
+        if (ModVersionText != null)
+        {
+            ModVersionText.text = LocalizeUtility.GetLocalizedString(
+                EngMessage: $"Mod {ModVersionDisplay.Version}",
+                JpnMessage: $"Mod {ModVersionDisplay.Version}");
+        }
+
+        if (ModDownloadButton != null)
+        {
+            Transform expectedParent = parent;
+            if (ModDownloadButton.transform.parent == expectedParent)
+            {
+                ApplyModDownloadButtonStyle();
+                PlaceModDownloadButton(verRt);
+                ModDownloadButton.gameObject.SetActive(true);
+                return;
+            }
+
+            Destroy(ModDownloadButton.gameObject);
+            ModDownloadButton = null;
+        }
+
+        Font font = VerText != null && VerText.font != null
+            ? VerText.font
+            : Resources.GetBuiltinResource<Font>("Arial.ttf");
+
+        var go = new GameObject("ModDownloadButton", typeof(RectTransform), typeof(Image), typeof(Button));
+        go.layer = VerText != null ? VerText.gameObject.layer : parent.gameObject.layer;
+        go.transform.SetParent(parent, false);
+
+        ModDownloadButton = go.GetComponent<Button>();
+        ModDownloadButton.onClick.AddListener(() =>
+        {
+            PlayDecisionSE();
+            Application.OpenURL(ModVersionDisplay.DownloadUrl);
+        });
+
+        var labelGo = new GameObject("Label", typeof(RectTransform));
+        labelGo.transform.SetParent(go.transform, false);
+        var text = labelGo.AddComponent<Text>();
+        text.font = font;
+        text.fontSize = 22;
+        text.fontStyle = FontStyle.Bold;
+        text.alignment = TextAnchor.MiddleCenter;
+        text.color = Color.white;
+        text.text = "Download";
+        text.raycastTarget = false;
+        if (VerText != null && VerText.material != null)
+        {
+            text.material = VerText.material;
+        }
+
+        var lrt = text.GetComponent<RectTransform>();
+        lrt.anchorMin = Vector2.zero;
+        lrt.anchorMax = Vector2.one;
+        lrt.offsetMin = Vector2.zero;
+        lrt.offsetMax = Vector2.zero;
+
+        ApplyModDownloadButtonStyle();
+        PlaceModDownloadButton(verRt);
+        go.SetActive(true);
+    }
+
+    void ApplyModDownloadButtonStyle()
+    {
+        if (ModDownloadButton == null)
+        {
+            return;
+        }
+
+        var image = ModDownloadButton.GetComponent<Image>();
+        if (image != null)
+        {
+            if (image.sprite == null)
+            {
+                image.sprite = Resources.GetBuiltinResource<Sprite>("UI/Skin/UISprite.psd");
+            }
+
+            image.material = null;
+            image.color = new Color(1f, 0.5f, 0f, 1f);
+        }
+
+        ModDownloadButton.targetGraphic = image;
+        ModDownloadButton.transition = Selectable.Transition.ColorTint;
+        var colors = ModDownloadButton.colors;
+        colors.normalColor = Color.white;
+        colors.highlightedColor = new Color(1f, 0.85f, 0.45f, 1f);
+        colors.pressedColor = new Color(0.75f, 0.38f, 0f, 1f);
+        colors.selectedColor = Color.white;
+        colors.disabledColor = new Color(0.5f, 0.5f, 0.5f, 0.5f);
+        colors.colorMultiplier = 1f;
+        ModDownloadButton.colors = colors;
+    }
+
+    void PlaceModDownloadButton(RectTransform verRt)
+    {
+        if (ModDownloadButton == null)
+        {
+            return;
+        }
+
+        var rt = ModDownloadButton.GetComponent<RectTransform>();
+        rt.localScale = Vector3.one;
+        rt.sizeDelta = new Vector2(200f, 56f);
+
+        if (verRt != null)
+        {
+            rt.localRotation = verRt.localRotation;
+            rt.anchorMin = verRt.anchorMin;
+            rt.anchorMax = verRt.anchorMax;
+            rt.pivot = verRt.pivot;
+            // Same column as History / Account / Friends, one row above History (+426)
+            rt.anchoredPosition = verRt.anchoredPosition + new Vector2(-20f, 494f);
+        }
+        else
+        {
+            rt.anchorMin = new Vector2(1f, 0f);
+            rt.anchorMax = new Vector2(1f, 0f);
+            rt.pivot = new Vector2(1f, 0f);
+            rt.anchoredPosition = new Vector2(-40f, 494f);
+        }
+    }
+    // === DCGO-CUSTOM:modversion end ===
+
     // === DCGO-CUSTOM:onlinecount begin ===
     void OnDestroy()
     {
@@ -587,13 +752,13 @@ public class Opening : MonoBehaviour
 
         if (OnlineCountText == null)
         {
-            OnlineCountText = CreateVerSiblingText("OnlineCountText", parent, verRt, yOffset: 70f);
+            OnlineCountText = CreateVerSiblingText("OnlineCountText", parent, verRt, yOffset: 140f);
         }
 
         if (RankedCountText == null)
         {
             // Above the online counter
-            RankedCountText = CreateVerSiblingText("RankedCountText", parent, verRt, yOffset: 140f);
+            RankedCountText = CreateVerSiblingText("RankedCountText", parent, verRt, yOffset: 210f);
         }
 
         var svc = OnlinePlayerCountService.EnsureExists();
@@ -655,14 +820,14 @@ public class Opening : MonoBehaviour
             rt.anchorMin = verRt.anchorMin;
             rt.anchorMax = verRt.anchorMax;
             rt.pivot = verRt.pivot;
-            rt.anchoredPosition = verRt.anchoredPosition + new Vector2(-20f, 210f);
+            rt.anchoredPosition = verRt.anchoredPosition + new Vector2(-20f, 280f);
         }
         else
         {
             rt.anchorMin = new Vector2(1f, 0f);
             rt.anchorMax = new Vector2(1f, 0f);
             rt.pivot = new Vector2(1f, 0f);
-            rt.anchoredPosition = new Vector2(-40f, 220f);
+            rt.anchoredPosition = new Vector2(-40f, 290f);
         }
 
         rt.sizeDelta = new Vector2(200f, 56f);
@@ -747,15 +912,15 @@ public class Opening : MonoBehaviour
             rt.anchorMin = verRt.anchorMin;
             rt.anchorMax = verRt.anchorMax;
             rt.pivot = verRt.pivot;
-            // Friends is at +210; button height 56 + 12 gap → +278
-            rt.anchoredPosition = verRt.anchoredPosition + new Vector2(-20f, 278f);
+            // Friends is at +280; button height 56 + 12 gap → +348
+            rt.anchoredPosition = verRt.anchoredPosition + new Vector2(-20f, 348f);
         }
         else
         {
             rt.anchorMin = new Vector2(1f, 0f);
             rt.anchorMax = new Vector2(1f, 0f);
             rt.pivot = new Vector2(1f, 0f);
-            rt.anchoredPosition = new Vector2(-40f, 288f);
+            rt.anchoredPosition = new Vector2(-40f, 358f);
         }
 
         rt.sizeDelta = new Vector2(200f, 56f);
@@ -840,14 +1005,14 @@ public class Opening : MonoBehaviour
             rt.anchorMax = verRt.anchorMax;
             rt.pivot = verRt.pivot;
             // Above Account button stack
-            rt.anchoredPosition = verRt.anchoredPosition + new Vector2(-20f, 356f);
+            rt.anchoredPosition = verRt.anchoredPosition + new Vector2(-20f, 426f);
         }
         else
         {
             rt.anchorMin = new Vector2(1f, 0f);
             rt.anchorMax = new Vector2(1f, 0f);
             rt.pivot = new Vector2(1f, 0f);
-            rt.anchoredPosition = new Vector2(-40f, 356f);
+            rt.anchoredPosition = new Vector2(-40f, 426f);
         }
 
         rt.sizeDelta = new Vector2(200f, 56f);

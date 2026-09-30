@@ -83,6 +83,9 @@ public class HomeMode : MonoBehaviour
 
         Opening.instance.optionPanel.CloseOptionPanel();
 
+        // === DCGO-CUSTOM:modversion begin ===
+        Opening.instance?.EnsureModVersionUi();
+        // === DCGO-CUSTOM:modversion end ===
         // === DCGO-CUSTOM:onlinecount begin ===
         if (Opening.instance != null)
         {

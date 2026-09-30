@@ -179,6 +179,13 @@ public class PermanentDetail : MonoBehaviour
         }
         #endregion
 
+        #region Iceclad
+        if (permanent.HasIceclad)
+        {
+            effectString += $"- Iceclad\n";
+        }
+        #endregion
+
         #region Raid
         if (permanent.HasRaid)
         {
@@ -256,6 +263,13 @@ public class PermanentDetail : MonoBehaviour
         }
         #endregion
 
+        #region Execute
+        if (permanent.HasExecute)
+        {
+            effectString += $"- Execute\n";
+        }
+        #endregion
+
         #region Security Attack Changes
         if (permanent.HasSecurityAttackChanges)
         {
@@ -321,6 +335,11 @@ public class PermanentDetail : MonoBehaviour
                 continue;
             }
 
+            if (cardEffect is IIcecladEffect)
+            {
+                continue;
+            }
+
             if (cardEffect is IChangeLinkMaxEffect)
             {
                 continue;
@@ -380,8 +399,9 @@ public class PermanentDetail : MonoBehaviour
         }
         #endregion
 
-        effectText.text = effectString.Replace("、", ",").Replace("，", ",");
-        effectText.raycastTarget = false;
+        effectText.text = KeywordReminder.WrapKeywords(effectString.Replace("、", ",").Replace("，", ","));
+        effectText.raycastTarget = true;
+        EnsureKeywordHover(effectText);
 
         for (int i = 0; i < pokemonScroll.content.childCount; i++)
         {
@@ -437,6 +457,11 @@ public class PermanentDetail : MonoBehaviour
         pokemonScroll.verticalNormalizedPosition = 1;
     }
 
+    void OnDisable()
+    {
+        KeywordTooltip.Hide();
+    }
+
     bool _first = false;
     public void CloseUnitDetail()
     {
@@ -450,7 +475,24 @@ public class PermanentDetail : MonoBehaviour
 
         _first = true;
 
+        KeywordTooltip.Hide();
         gameObject.SetActive(false);
+    }
+
+    static void EnsureKeywordHover(TextMeshProUGUI text)
+    {
+        if (text == null)
+        {
+            return;
+        }
+
+        KeywordTooltipHover hover = text.GetComponent<KeywordTooltipHover>();
+        if (hover == null)
+        {
+            hover = text.gameObject.AddComponent<KeywordTooltipHover>();
+        }
+
+        hover.Bind();
     }
 
     public void OnClickCardImage()

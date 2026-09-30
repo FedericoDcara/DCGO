@@ -432,7 +432,9 @@ public static class ProfileIconUtility
         if (existing != null)
             existing.gameObject.SetActive(namePlate.gameObject.activeSelf);
 
-        NudgeOpponentSecurity(player);
+        UndoLocalNamePlateNudge(player);
+        NudgeOpponentNamePlateForIcon(player);
+        FixOpponentSecurityNudge(player);
         return image;
     }
 
@@ -441,28 +443,89 @@ public static class ProfileIconUtility
         if (rt == null)
             return;
 
-        // Local player: icon on the left of the name bar.
-        // Opponent: same offset on the right so it sits beside their plate.
-        // Opponent name plate is scaled ~0.7, so enlarge the rect to match on-screen size.
-        rt.anchoredPosition = new Vector2(isYou ? -196f : 196f, 0f);
-        rt.sizeDelta = isYou ? new Vector2(82f, 82f) : new Vector2(118f, 118f);
+        // Local player: icon on the LEFT of the name bar (do not move the nameplate).
+        // Keep the offset modest so it stays on-screen at 1920x1080.
+        // Opponent: icon on the RIGHT; plate is scaled ~0.7 so use a larger rect.
+        if (isYou)
+        {
+            rt.anchoredPosition = new Vector2(-120f, 0f);
+            rt.sizeDelta = new Vector2(72f, 72f);
+        }
+        else
+        {
+            rt.anchoredPosition = new Vector2(196f, 0f);
+            rt.sizeDelta = new Vector2(118f, 118f);
+        }
     }
 
-    static void NudgeOpponentSecurity(Player player)
+    /// <summary>
+    /// Undo the old local nameplate nudge — user wants the plate left in place.
+    /// </summary>
+    static void UndoLocalNamePlateNudge(Player player)
+    {
+        if (player == null || !player.isYou || player.PlayerNameText == null)
+            return;
+
+        Transform namePlate = player.PlayerNameText.transform.parent;
+        if (namePlate == null)
+            return;
+
+        var rt = namePlate as RectTransform;
+        if (rt == null)
+            return;
+
+        Transform legacy = namePlate.Find("ProfileIconNamePlateNudge");
+        if (legacy == null)
+            return;
+
+        Vector2 pos = rt.anchoredPosition;
+        pos.x -= 90f;
+        rt.anchoredPosition = pos;
+        UnityEngine.Object.Destroy(legacy.gameObject);
+    }
+
+    static void NudgeOpponentNamePlateForIcon(Player player)
+    {
+        if (player == null || player.isYou || player.PlayerNameText == null)
+            return;
+
+        Transform namePlate = player.PlayerNameText.transform.parent;
+        if (namePlate == null)
+            return;
+
+        var rt = namePlate as RectTransform;
+        if (rt == null || namePlate.Find("ProfileIconOpponentPlateNudge") != null)
+            return;
+
+        var marker = new GameObject("ProfileIconOpponentPlateNudge");
+        marker.transform.SetParent(namePlate, false);
+
+        // Pull name + icon left so security can stay at its original on-screen position.
+        Vector2 pos = rt.anchoredPosition;
+        pos.x -= 110f;
+        rt.anchoredPosition = pos;
+    }
+
+    /// <summary>
+    /// Undo the old +70 rightward security nudge (it clipped at 16:9).
+    /// </summary>
+    static void FixOpponentSecurityNudge(Player player)
     {
         if (player == null || player.isYou || player.securityObject == null)
             return;
 
         var rt = player.securityObject.transform as RectTransform;
-        if (rt == null || rt.Find("ProfileIconSecurityNudge") != null)
+        if (rt == null)
             return;
 
-        var marker = new GameObject("ProfileIconSecurityNudge");
-        marker.transform.SetParent(rt, false);
+        Transform legacy = rt.Find("ProfileIconSecurityNudge");
+        if (legacy == null)
+            return;
 
         Vector2 pos = rt.anchoredPosition;
-        pos.x += 70f;
+        pos.x -= 70f;
         rt.anchoredPosition = pos;
+        UnityEngine.Object.Destroy(legacy.gameObject);
     }
 
     public static async Task ApplyHomeIcon(PlayerInfo playerInfo)

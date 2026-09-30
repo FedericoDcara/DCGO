@@ -110,6 +110,26 @@ public class LocalizeTMPro : MonoBehaviour
         }
     }
 
+    public void ApplyFontSize(int size)
+    {
+        if (size <= 0)
+            return;
+
+        _fontSize_ENG = size;
+        _fontSize_JPN = size;
+
+        if (_text == null && _textMeshPro == null)
+        {
+            _textMeshPro = GetComponent<TextMeshProUGUI>();
+            _text = GetComponent<Text>();
+        }
+
+        if (_text != null)
+            _text.fontSize = size;
+        if (_textMeshPro != null)
+            _textMeshPro.fontSize = size;
+    }
+
     void Awake()
     {
         _textMeshPro = GetComponent<TextMeshProUGUI>();
