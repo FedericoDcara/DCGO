@@ -875,6 +875,16 @@ public class TournamentMatchDirector : MonoBehaviourPunCallbacks
             }
         }
 
+        while (ResultObject.HoldAutoLeave)
+        {
+            if (GManager.instance == null)
+            {
+                yield break;
+            }
+
+            yield return null;
+        }
+
         Bo3FirstPlayerChoice.Hide();
         _autoAdvanceFromResult = null;
         _autoAdvancingResult = false;
@@ -1940,8 +1950,8 @@ public class TournamentMatchDirector : MonoBehaviourPunCallbacks
 
     public override void OnPlayerLeftRoom(Photon.Realtime.Player otherPlayer)
     {
-        // Inactive disconnects are held by BattleReconnectService until PlayerTtl.
-        // A full leave (TTL expired / LeaveRoom(false)) is a forfeit via GManager.CheckDisconnect.
+        // Inactive and full leaves forfeit via GManager.CheckDisconnect.
+        // Waiting for an inactive opponent is disabled (BattleReconnectService.WaitForOpponent).
     }
 
     public override void OnRoomPropertiesUpdate(Hashtable propertiesThatChanged)

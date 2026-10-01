@@ -138,6 +138,31 @@ public class SelectJogressEffect : MonoBehaviour
     }
     public IEnumerator SelectDigivolutionRoots()
     {
+        // === DCGO-CUSTOM:replay begin ===
+        // Local root picks are only for this UI. Playback already has the play action
+        // or the DNA RPC that lists the two materials, so these selections must not be recorded.
+        bool suppressRecording = _isLocal;
+        if (suppressRecording)
+        {
+            MatchRecorder.PushSuppressSelectionRecording();
+        }
+
+        try
+        {
+            yield return SelectDigivolutionRootsCore();
+        }
+        finally
+        {
+            if (suppressRecording)
+            {
+                MatchRecorder.PopSuppressSelectionRecording();
+            }
+        }
+        // === DCGO-CUSTOM:replay end ===
+    }
+
+    IEnumerator SelectDigivolutionRootsCore()
+    {
         bool active = false;
         SelectPermanentEffect selectPermanentEffect = null;
 

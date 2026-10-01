@@ -17,6 +17,25 @@ public static class MatchRecorder
 
     public static bool IsRecording => _recording && !_finalized && _current != null;
 
+    /// <summary>
+    /// Local DNA-root picks are consumed only by the setup UI. The play action or the
+    /// later DNA RPC already stores the result, so recording those picks stalls playback.
+    /// </summary>
+    static int _suppressSelectionRecording;
+
+    public static void PushSuppressSelectionRecording()
+    {
+        _suppressSelectionRecording++;
+    }
+
+    public static void PopSuppressSelectionRecording()
+    {
+        if (_suppressSelectionRecording > 0)
+        {
+            _suppressSelectionRecording--;
+        }
+    }
+
     /// <summary>Changes every game so a spectator stream can tell recordings apart.</summary>
     public static int SessionId { get; private set; }
 
@@ -179,7 +198,7 @@ public static class MatchRecorder
 
     public static void RecordPlayerSelection(int playerId, IPlayerSelection selection)
     {
-        if (!IsRecording || selection == null)
+        if (!IsRecording || selection == null || _suppressSelectionRecording > 0)
         {
             return;
         }

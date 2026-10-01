@@ -237,6 +237,23 @@ public class Player : MonoBehaviour
     {
         return _playerSelectionQueue.Count > 0;
     }
+
+    public IPlayerSelection DequeueAnyPlayerSelection()
+    {
+        if (_playerSelectionQueue.Count == 0)
+        {
+            return null;
+        }
+
+        return _playerSelectionQueue.Dequeue();
+    }
+
+    public int DiscardAllPlayerSelections()
+    {
+        int count = _playerSelectionQueue.Count;
+        _playerSelectionQueue.Clear();
+        return count;
+    }
     #endregion
 
     #region セキュリティアタックの座標

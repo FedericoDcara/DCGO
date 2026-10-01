@@ -405,6 +405,16 @@ public class FriendDuelDirector : MonoBehaviour
             }
         }
 
+        while (ResultObject.HoldAutoLeave)
+        {
+            if (GManager.instance == null)
+            {
+                yield break;
+            }
+
+            yield return null;
+        }
+
         Bo3FirstPlayerChoice.Hide();
         _autoAdvanceFromResult = null;
         _autoAdvancingResult = false;

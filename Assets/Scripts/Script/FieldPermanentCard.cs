@@ -171,10 +171,36 @@ public class FieldPermanentCard : MonoBehaviour
         }
 
         OffPermanentIndexText();
-        
+
+        EnsureEffectPopupListener();
+
         //Events
         GManager.OnReverseOpponentsCardsChanged += SetTransformRotation;
         GManager.OnCardFlippedChanged += SetCardIsFlipped;
+    }
+
+    void EnsureEffectPopupListener()
+    {
+        if (Collider == null)
+        {
+            return;
+        }
+
+        EventTrigger trigger = Collider.GetComponent<EventTrigger>();
+        if (trigger == null)
+        {
+            return;
+        }
+
+        if (trigger.triggers == null)
+        {
+            trigger.triggers = new List<EventTrigger.Entry>();
+        }
+
+        EventTrigger.Entry entry = new EventTrigger.Entry();
+        entry.eventID = EventTriggerType.PointerEnter;
+        entry.callback.AddListener(PointerEnter);
+        trigger.triggers.Add(entry);
     }
 
     public IEnumerator ShowAddDigivolutionCardEffect()
@@ -253,8 +279,12 @@ public class FieldPermanentCard : MonoBehaviour
     }
 
     float _validPressTime = 0.5f;
+    const float TouchPopupDelay = 0.4f;
+    const float TouchDetailDelay = 1f;
     float _requiredTime = 0.0f;
     bool _pressing = false;
+    const float EffectPopupDelay = 1f;
+    float _effectPopupAt = -1f;
 
     #region Processing on click
 
@@ -740,6 +770,8 @@ public class FieldPermanentCard : MonoBehaviour
     //TODO: Pretty poor gargage collection, need to optimize - MB
     private void LateUpdate()
     {
+        UpdateEffectPopup();
+
         if (skipUpdate)
         {
             return;
@@ -803,6 +835,7 @@ public class FieldPermanentCard : MonoBehaviour
         {
             if (_requiredTime < Time.time)
             {
+                CancelEffectPopup();
                 OnRightClicked();
                 _pressing = false;
             }
@@ -828,12 +861,27 @@ public class FieldPermanentCard : MonoBehaviour
     }
     #endregion
 
+    public void PointerEnter(BaseEventData eventData)
+    {
+        if (IsTouchPointer(eventData))
+        {
+            return;
+        }
+
+        _effectPopupAt = Time.unscaledTime + EffectPopupDelay;
+    }
+
     public void PointerDown(BaseEventData eventData)
     {
         if (!_pressing)
         {
             _pressing = true;
-            _requiredTime = Time.time + _validPressTime;
+            float detailDelay = IsTouchPointer(eventData) ? TouchDetailDelay : _validPressTime;
+            _requiredTime = Time.time + detailDelay;
+            if (IsTouchPointer(eventData))
+            {
+                _effectPopupAt = Time.unscaledTime + TouchPopupDelay;
+            }
         }
 
         else
@@ -845,16 +893,138 @@ public class FieldPermanentCard : MonoBehaviour
     public void PointerUp(BaseEventData eventData)
     {
         CancelLongPress();
+        if (IsTouchPointer(eventData))
+        {
+            CancelEffectPopup();
+        }
+    }
+
+    static bool IsTouchPointer(BaseEventData eventData)
+    {
+        PointerEventData pointer = eventData as PointerEventData;
+        return pointer != null && pointer.pointerId != -1;
     }
 
     public void PointerExit(BaseEventData eventData)
     {
         CancelLongPress();
+        CancelEffectPopup();
     }
 
     public void CancelLongPress()
     {
         _pressing = false;
+    }
+
+    void OnDisable()
+    {
+        CancelEffectPopup();
+    }
+
+    void UpdateEffectPopup()
+    {
+        if (_effectPopupAt < 0f)
+        {
+            return;
+        }
+
+        if (destroyed || ThisPermanent == null || ThisPermanent.TopCard == null)
+        {
+            CancelEffectPopup();
+            return;
+        }
+
+        if (Time.unscaledTime < _effectPopupAt)
+        {
+            return;
+        }
+
+        _effectPopupAt = -1f;
+
+        if (ThisPermanent.TopCard.IsFlipped && !ThisPermanent.TopCard.Owner.isYou)
+        {
+            return;
+        }
+
+        if (GManager.instance == null || GManager.instance.canvas == null)
+        {
+            return;
+        }
+
+        string applied = PermanentDetail.BuildAppliedEffectText(ThisPermanent);
+        string digivolution = PermanentDetail.BuildDigivolutionEffectText(ThisPermanent);
+        if (string.IsNullOrWhiteSpace(applied) && string.IsNullOrWhiteSpace(digivolution))
+        {
+            return;
+        }
+
+        GetCardScreenEdges(out Vector2 leftScreen, out Vector2 rightScreen);
+        TMP_FontAsset font = GManager.instance.pokemonDetail != null && GManager.instance.pokemonDetail.effectText != null
+            ? GManager.instance.pokemonDetail.effectText.font
+            : null;
+        Canvas canvas = GManager.instance.canvas;
+
+        if (string.IsNullOrWhiteSpace(applied))
+        {
+            AppliedEffectTooltip.HideApplied(this);
+        }
+        else
+        {
+            AppliedEffectTooltip.Show(applied, leftScreen, rightScreen, canvas, font, this);
+        }
+
+        if (string.IsNullOrWhiteSpace(digivolution))
+        {
+            AppliedEffectTooltip.HideDigivolution(this);
+        }
+        else
+        {
+            AppliedEffectTooltip.ShowDigivolution(digivolution, leftScreen, rightScreen, canvas, font, this);
+        }
+
+        AppliedEffectTooltip.KeepApart();
+    }
+
+    void CancelEffectPopup()
+    {
+        _effectPopupAt = -1f;
+        AppliedEffectTooltip.Hide(this);
+    }
+
+    void GetCardScreenEdges(out Vector2 leftScreen, out Vector2 rightScreen)
+    {
+        Canvas cardCanvas = GetComponentInParent<Canvas>();
+        Camera camera = null;
+        if (cardCanvas != null && cardCanvas.renderMode != RenderMode.ScreenSpaceOverlay)
+        {
+            camera = cardCanvas.worldCamera != null
+                ? cardCanvas.worldCamera
+                : (GManager.instance != null ? GManager.instance.camara : null);
+        }
+
+        RectTransform rect = transform as RectTransform;
+        if (rect == null)
+        {
+            Vector2 point = RectTransformUtility.WorldToScreenPoint(camera, transform.position);
+            leftScreen = point;
+            rightScreen = point;
+            return;
+        }
+
+        Vector3[] corners = new Vector3[4];
+        rect.GetWorldCorners(corners);
+        Vector2 left = (RectTransformUtility.WorldToScreenPoint(camera, corners[0]) + RectTransformUtility.WorldToScreenPoint(camera, corners[1])) * 0.5f;
+        Vector2 right = (RectTransformUtility.WorldToScreenPoint(camera, corners[2]) + RectTransformUtility.WorldToScreenPoint(camera, corners[3])) * 0.5f;
+        if (left.x > right.x)
+        {
+            leftScreen = right;
+            rightScreen = left;
+        }
+        else
+        {
+            leftScreen = left;
+            rightScreen = right;
+        }
     }
 
     #region このオブジェクトを削除
@@ -992,6 +1162,7 @@ public class FieldPermanentCard : MonoBehaviour
     public void OnBeginDrag()
     {
         CancelLongPress();
+        CancelEffectPopup();
         OnBeginDragAction?.Invoke(this);
     }
 

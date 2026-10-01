@@ -370,6 +370,23 @@ public class MatchHistoryPanel : MonoBehaviour
 
     void OnClickExport(string id)
     {
+        if (ReplayFileBridge.UsesSystemShare)
+        {
+            string shared = MatchHistoryStore.ExportReplay(id, Application.temporaryCachePath);
+            if (shared != null && ReplayFileBridge.Share(shared))
+            {
+                SetStatus(LocalizeUtility.GetLocalizedString(
+                    EngMessage: "Choose where to send the replay.",
+                    JpnMessage: "リプレイの送信先を選んでください。"));
+            }
+            else
+            {
+                SetStatus("Export failed.");
+            }
+
+            return;
+        }
+
         string desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
         if (string.IsNullOrEmpty(desktop))
         {
@@ -392,6 +409,15 @@ public class MatchHistoryPanel : MonoBehaviour
 
     void OnClickImport()
     {
+        if (ReplayFileBridge.UsesSystemShare)
+        {
+            SetStatus(LocalizeUtility.GetLocalizedString(
+                EngMessage: "Select a .dcgoreplay file.",
+                JpnMessage: ".dcgoreplay ファイルを選択してください。"));
+            ReplayFileBridge.Pick(OnMobileReplayPicked);
+            return;
+        }
+
         string path = GUIUtility.systemCopyBuffer;
         if (string.IsNullOrEmpty(path) || !File.Exists(path))
         {
@@ -401,7 +427,24 @@ public class MatchHistoryPanel : MonoBehaviour
             return;
         }
 
-        var data = MatchHistoryStore.ImportReplay(path);
+        ApplyImportedReplay(MatchHistoryStore.ImportReplay(path));
+    }
+
+    void OnMobileReplayPicked(string path)
+    {
+        if (string.IsNullOrEmpty(path) || !File.Exists(path))
+        {
+            SetStatus(LocalizeUtility.GetLocalizedString(
+                EngMessage: "Import cancelled.",
+                JpnMessage: "インポートをキャンセルしました。"));
+            return;
+        }
+
+        ApplyImportedReplay(MatchHistoryStore.ImportReplay(path));
+    }
+
+    void ApplyImportedReplay(ReplayData data)
+    {
         if (data != null)
         {
             SetStatus(LocalizeUtility.GetLocalizedString(

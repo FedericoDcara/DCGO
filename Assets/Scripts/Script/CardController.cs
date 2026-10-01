@@ -592,7 +592,20 @@ public class PlayCardClass
 
             if (isJogress)
             {
-                baseDNA = GManager.instance.GetComponent<SelectDNACondition>()._selectedCount;
+                int preferred = -1;
+                bool playback = GManager.instance.IsReplay ||
+                    (ContinuousController.instance != null && ContinuousController.instance.isSpectatorCatchUp);
+                if (!playback)
+                {
+                    SelectDNACondition dnaSelect = GManager.instance.GetComponent<SelectDNACondition>();
+                    if (dnaSelect != null)
+                    {
+                        preferred = dnaSelect._selectedCount;
+                    }
+                }
+
+                // Playback does not re-run the DNA-condition UI, so pick the condition the materials satisfy.
+                baseDNA = card.ResolveJogressConditionIndex(targetPermanents, preferred);
             }
 
             #endregion

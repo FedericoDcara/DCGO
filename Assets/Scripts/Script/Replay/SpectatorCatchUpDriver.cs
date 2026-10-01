@@ -193,6 +193,7 @@ public class SpectatorCatchUpDriver : MonoBehaviour
             yield break;
         }
 
+        ReplayDriver.DiscardOrphanSelections(player);
         yield return WaitForEmptyQueue(() => player.HasMainPhaseAction(), "main-phase", evt.playerId);
         if (IsEndGame() || !_running)
         {
@@ -253,6 +254,18 @@ public class SpectatorCatchUpDriver : MonoBehaviour
         float waited = 0f;
         while (_running && !IsEndGame() && hasPending())
         {
+            yield return null;
+
+            if (label == "selection")
+            {
+                ReplayDriver.DiscardOrphanSelections(ResolvePlayer(playerId));
+            }
+
+            if (!hasPending())
+            {
+                break;
+            }
+
             waited += Time.unscaledDeltaTime;
             if (waited > 20f)
             {
@@ -260,8 +273,6 @@ public class SpectatorCatchUpDriver : MonoBehaviour
                     $"[Tournament] Catch-up stall waiting for {label} queue player={playerId} cursor={_cursor}");
                 waited = 0f;
             }
-
-            yield return null;
         }
     }
 

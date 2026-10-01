@@ -2937,6 +2937,58 @@ public class CardSource : MonoBehaviour
         return false;
     }
 
+    public int ResolveJogressConditionIndex(List<Permanent> targetPermanents, int preferredIndex)
+    {
+        if (jogressCondition == null || jogressCondition.Count == 0)
+        {
+            return 0;
+        }
+
+        if (preferredIndex >= 0 &&
+            preferredIndex < jogressCondition.Count &&
+            JogressConditionMatches(jogressCondition[preferredIndex], targetPermanents))
+        {
+            return preferredIndex;
+        }
+
+        for (int i = 0; i < jogressCondition.Count; i++)
+        {
+            if (JogressConditionMatches(jogressCondition[i], targetPermanents))
+            {
+                return i;
+            }
+        }
+
+        return 0;
+    }
+
+    bool JogressConditionMatches(JogressCondition condition, List<Permanent> targetPermanents)
+    {
+        if (condition == null || condition.elements == null || condition.elements.Length != 2)
+        {
+            return false;
+        }
+
+        if (targetPermanents == null || targetPermanents.Count != 2)
+        {
+            return false;
+        }
+
+        if (targetPermanents[0] == null || targetPermanents[1] == null)
+        {
+            return false;
+        }
+
+        bool Ordered(Permanent first, Permanent second)
+        {
+            return condition.elements[0].EvoRootCondition(first) && !CanNotEvolve(first)
+                && condition.elements[1].EvoRootCondition(second) && !CanNotEvolve(second);
+        }
+
+        return Ordered(targetPermanents[0], targetPermanents[1])
+            || Ordered(targetPermanents[1], targetPermanents[0]);
+    }
+
     #endregion
 
     #region whether this card has level

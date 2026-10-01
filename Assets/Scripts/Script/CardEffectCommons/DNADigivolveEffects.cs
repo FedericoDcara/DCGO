@@ -561,7 +561,9 @@ public partial class CardEffectCommons
             int[] _jogressEvoRootsFrameIDs = new int[0];
 
             // === DCGO-CUSTOM:replay begin ===
-            if ((owner.isYou && !GManager.instance.IsReplay) || GManager.instance.AllowAiDecisions)
+            bool playback = GManager.instance.IsReplay ||
+                (ContinuousController.instance != null && ContinuousController.instance.isSpectatorCatchUp);
+            if ((owner.isYou && !playback) || GManager.instance.AllowAiDecisions)
             // === DCGO-CUSTOM:replay end ===
             {
                 GManager.instance.selectJogressEffect.SetUp_SelectDigivolutionRoots
@@ -594,13 +596,43 @@ public partial class CardEffectCommons
                 GManager.instance.commandText.OpenCommandText("The opponent is choosing a card to DNA digivolve.");
             }
 
-            yield return new WaitUntil(() => owner.HasPlayerSelection());
-            PermanentSelection permanentSelection = owner.DequeuePlayerSelection<PermanentSelection>();
+            // === DCGO-CUSTOM:replay begin ===
+            // Older replays recorded each material click before the RPC that lists both roots.
+            // Playback has to skip those clicks. A live game already consumed them in the UI.
+            PermanentSelection permanentSelection = null;
+            if (playback)
+            {
+                while (permanentSelection == null)
+                {
+                    yield return new WaitUntil(() =>
+                        owner.HasPlayerSelection() ||
+                        (GManager.instance.turnStateMachine != null && GManager.instance.turnStateMachine.endGame));
+
+                    if (GManager.instance.turnStateMachine != null && GManager.instance.turnStateMachine.endGame)
+                    {
+                        yield break;
+                    }
+
+                    IPlayerSelection selection = owner.DequeueAnyPlayerSelection();
+                    if (selection is PermanentSelection candidate && IsJogressRootCommit(candidate))
+                    {
+                        permanentSelection = candidate;
+                    }
+                }
+            }
+            else
+            {
+                yield return new WaitUntil(() => owner.HasPlayerSelection());
+                permanentSelection = owner.DequeuePlayerSelection<PermanentSelection>();
+            }
+            // === DCGO-CUSTOM:replay end ===
 
             GManager.instance.commandText.CloseCommandText();
             yield return new WaitWhile(() => GManager.instance.commandText.gameObject.activeSelf);
 
-            if (permanentSelection.PermanentIDList.Length == DnaPermanentCount)
+            if (permanentSelection != null &&
+                permanentSelection.PermanentIDList != null &&
+                permanentSelection.PermanentIDList.Length == DnaPermanentCount)
             {
                 yield return ContinuousController.instance.StartCoroutine(GManager.instance.GetComponent<Effects>().ShowCardEffect(new List<CardSource>() { dnaTarget }, "Played Card", true, true));
 
@@ -661,6 +693,22 @@ public partial class CardEffectCommons
         //bool FullPermanentCondition2(Permanent permanent) => PermanentCondition(permanent) && permanentCondition2 != null && permanentCondition2(permanent);
     }
 
+    static bool IsJogressRootCommit(PermanentSelection selection)
+    {
+        if (selection == null || selection.PermanentIDList == null)
+        {
+            return false;
+        }
+
+        bool hasTurnFlags = selection.IsTurnPlayerList != null && selection.IsTurnPlayerList.Length > 0;
+        if (hasTurnFlags)
+        {
+            return false;
+        }
+
+        return selection.PermanentIDList.Length == 2 || selection.PermanentIDList.Length == 0;
+    }
+
     //Private class used to register the callback so this doesn't need to be defined in every card that uses DNA by effect
     private class SetJogressEvoRootsController : MonoBehaviourPunCallbacks
     {
@@ -672,6 +720,11 @@ public partial class CardEffectCommons
             if (selectionPlayer == null)
             {
                 return;
+            }
+
+            if (jogressEvoRootsFrameIDs == null)
+            {
+                jogressEvoRootsFrameIDs = new int[0];
             }
 
             selectionPlayer.QueuePlayerSelection(new PermanentSelection(null, jogressEvoRootsFrameIDs));

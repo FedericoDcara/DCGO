@@ -203,6 +203,8 @@ public class ReplayDriver : MonoBehaviour
             yield break;
         }
 
+        DiscardOrphanSelections(player);
+
         float waited = 0f;
         while (true)
         {
@@ -247,7 +249,7 @@ public class ReplayDriver : MonoBehaviour
         }
 
         float waited = 0f;
-        while (true)
+        while (player.HasPlayerSelection())
         {
             yield return WaitWhilePaused();
             if (IsEndGame())
@@ -255,6 +257,8 @@ public class ReplayDriver : MonoBehaviour
                 yield break;
             }
 
+            yield return null;
+            DiscardOrphanSelections(player);
             if (!player.HasPlayerSelection())
             {
                 break;
@@ -266,8 +270,6 @@ public class ReplayDriver : MonoBehaviour
                 Debug.LogError($"[Replay] Stall: waiting for selection queue to clear player={evt.playerId} type={evt.EventType} cursor={_cursor}.");
                 waited = 0f;
             }
-
-            yield return null;
         }
 
         var selection = evt.ToSelection();
@@ -293,6 +295,30 @@ public class ReplayDriver : MonoBehaviour
         }
 
         GManager.instance.turnStateMachine.Surrender(evt.playerId);
+    }
+
+    /// <summary>
+    /// DNA (and similar) setup clicks are recorded before the play action that already
+    /// stores the chosen cards. While the main phase is idle those clicks are never consumed.
+    /// </summary>
+    public static void DiscardOrphanSelections(Player player)
+    {
+        TurnStateMachine turnStateMachine = GManager.instance != null ? GManager.instance.turnStateMachine : null;
+        if (turnStateMachine == null || player == null)
+        {
+            return;
+        }
+
+        if (!turnStateMachine.IsAwaitingMainPhaseInput || player.HasMainPhaseAction() || !player.HasPlayerSelection())
+        {
+            return;
+        }
+
+        int dropped = player.DiscardAllPlayerSelections();
+        if (dropped > 0)
+        {
+            Debug.Log($"[Replay] Dropped {dropped} setup selection(s) for player {player.PlayerID}.");
+        }
     }
 
     static Player ResolvePlayer(int playerId)

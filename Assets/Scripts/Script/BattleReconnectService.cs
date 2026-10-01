@@ -5,18 +5,21 @@ using UnityEngine;
 using Hashtable = ExitGames.Client.Photon.Hashtable;
 
 /// <summary>
-/// Keeps a PvP battle alive across a phone lock / background: reconnects with
-/// ReconnectAndRejoin and holds the remaining player until PlayerTtl expires.
-/// Same-process pause only — a killed app still forfeits after the grace period.
-///
-/// Desync guard: freeze early via pause flag + heartbeat so both clients stop
-/// near the same moment instead of waiting for Photon's ~10s timeout.
+/// Keeps a PvP battle alive across a phone lock / background via ReconnectAndRejoin.
+/// Same-process pause only — a killed app still forfeits.
+/// The remaining player does not freeze while the opponent is away.
 /// </summary>
 public class BattleReconnectService : MonoBehaviourPunCallbacks
 {
     public const int PlayerTtlMs = 90000;
     public const int MinEmptyRoomTtlMs = 90000;
     public const float KeepAliveInBackgroundSeconds = 90f;
+
+    /// <summary>
+    /// When false, a paused, stale, or inactive opponent does not freeze the battle
+    /// or show "Waiting for opponent". The match ends once they are no longer active.
+    /// </summary>
+    public const bool WaitForOpponent = false;
 
     const string PausePropKey = "BattlePaused";
     const string HeartbeatPropKey = "BattleHb";
@@ -202,7 +205,7 @@ public class BattleReconnectService : MonoBehaviourPunCallbacks
 
     public void EnsureHoldForOpponent()
     {
-        if (!IsInBattle() || IsHoldingForOpponent)
+        if (!WaitForOpponent || !IsInBattle() || IsHoldingForOpponent)
         {
             return;
         }
@@ -422,6 +425,11 @@ public class BattleReconnectService : MonoBehaviourPunCallbacks
 
     bool ShouldHoldForOpponent()
     {
+        if (!WaitForOpponent)
+        {
+            return false;
+        }
+
         if (HasInactiveOpponent())
         {
             return true;

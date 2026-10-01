@@ -59,6 +59,94 @@ public class PermanentDetail : MonoBehaviour
             }
         }
 
+        string effectString = BuildAppliedEffectText(permanent);
+        effectText.text = KeywordReminder.WrapKeywords(effectString);
+        effectText.raycastTarget = true;
+        EnsureKeywordHover(effectText);
+
+        for (int i = 0; i < pokemonScroll.content.childCount; i++)
+        {
+            Destroy(pokemonScroll.content.GetChild(i).gameObject);
+        }
+
+        //Adds Top card to stack
+        CardInfo topCardInfo = Instantiate(cardInfoPrefab, pokemonScroll.content);
+        topCardInfo.SetUpCardInfo(permanent.TopCard, permanent);
+
+        //Adds Digivolution Cards
+        foreach (CardSource cardSource in permanent.DigivolutionCards.Clone())
+        {
+            CardInfo cardInfo = Instantiate(cardInfoPrefab, pokemonScroll.content);
+            cardInfo.SetUpCardInfo(cardSource);
+        }
+
+        //Adds Linked Cards
+        foreach (CardSource cardSource in permanent.LinkedCards.Clone())
+        {
+            CardInfo cardInfo = Instantiate(cardInfoPrefab, pokemonScroll.content);
+            cardInfo.SetUpCardInfo(cardSource);
+        }
+
+        Vector3 targetPositon = Vector3.zero;
+        Vector3 startPosition = Vector3.zero;
+
+        if (_permanent.ShowingPermanentCard.transform.position.x > 27)
+        {
+            targetPositon = new Vector3(-390, 0, 0);
+            startPosition = new Vector3(-130, 0, 0);
+        }
+
+        else
+        {
+            targetPositon = new Vector3(390, 0, 0);
+            startPosition = new Vector3(130, 0, 0);
+        }
+
+        pokemonInfoPanel.transform.localScale = new Vector3(1.1f, 1.1f, 1.1f);
+
+        float animationTime = 0.12f;
+
+        var sequence = DOTween.Sequence();
+
+        sequence
+            .Append(pokemonInfoPanel.transform.DOScale(new Vector3(1.3f, 1.3f, 1.3f), animationTime));
+
+        sequence.Play();
+
+        await Task.Delay(TimeSpan.FromSeconds(Time.deltaTime));
+
+        pokemonScroll.verticalNormalizedPosition = 1;
+    }
+
+    void OnDisable()
+    {
+        KeywordTooltip.Hide();
+    }
+
+    bool _first = false;
+    public void CloseUnitDetail()
+    {
+        if (_first)
+        {
+            if (Opening.instance != null)
+            {
+                Opening.instance.PlayCancelSE();
+            }
+        }
+
+        _first = true;
+
+        KeywordTooltip.Hide();
+        gameObject.SetActive(false);
+    }
+
+    public static string BuildAppliedEffectText(Permanent permanent)
+    {
+        if (permanent == null)
+        {
+            return "";
+        }
+
         List<ICardEffect> cardEffects = new List<ICardEffect>();
 
         foreach (ICardEffect cardEffect in permanent.EffectList(EffectTiming.None))
@@ -399,84 +487,52 @@ public class PermanentDetail : MonoBehaviour
         }
         #endregion
 
-        effectText.text = KeywordReminder.WrapKeywords(effectString.Replace("、", ",").Replace("，", ","));
-        effectText.raycastTarget = true;
-        EnsureKeywordHover(effectText);
-
-        for (int i = 0; i < pokemonScroll.content.childCount; i++)
-        {
-            Destroy(pokemonScroll.content.GetChild(i).gameObject);
-        }
-
-        //Adds Top card to stack
-        CardInfo topCardInfo = Instantiate(cardInfoPrefab, pokemonScroll.content);
-        topCardInfo.SetUpCardInfo(permanent.TopCard, permanent);
-
-        //Adds Digivolution Cards
-        foreach (CardSource cardSource in permanent.DigivolutionCards.Clone())
-        {
-            CardInfo cardInfo = Instantiate(cardInfoPrefab, pokemonScroll.content);
-            cardInfo.SetUpCardInfo(cardSource);
-        }
-
-        //Adds Linked Cards
-        foreach (CardSource cardSource in permanent.LinkedCards.Clone())
-        {
-            CardInfo cardInfo = Instantiate(cardInfoPrefab, pokemonScroll.content);
-            cardInfo.SetUpCardInfo(cardSource);
-        }
-
-        Vector3 targetPositon = Vector3.zero;
-        Vector3 startPosition = Vector3.zero;
-
-        if (_permanent.ShowingPermanentCard.transform.position.x > 27)
-        {
-            targetPositon = new Vector3(-390, 0, 0);
-            startPosition = new Vector3(-130, 0, 0);
-        }
-
-        else
-        {
-            targetPositon = new Vector3(390, 0, 0);
-            startPosition = new Vector3(130, 0, 0);
-        }
-
-        pokemonInfoPanel.transform.localScale = new Vector3(1.1f, 1.1f, 1.1f);
-
-        float animationTime = 0.12f;
-
-        var sequence = DOTween.Sequence();
-
-        sequence
-            .Append(pokemonInfoPanel.transform.DOScale(new Vector3(1.3f, 1.3f, 1.3f), animationTime));
-
-        sequence.Play();
-
-        await Task.Delay(TimeSpan.FromSeconds(Time.deltaTime));
-
-        pokemonScroll.verticalNormalizedPosition = 1;
+        return effectString.Replace("、", ",").Replace("，", ",");
     }
 
-    void OnDisable()
+    public static string BuildDigivolutionEffectText(Permanent permanent)
     {
-        KeywordTooltip.Hide();
-    }
-
-    bool _first = false;
-    public void CloseUnitDetail()
-    {
-        if (_first)
+        if (permanent == null)
         {
-            if (Opening.instance != null)
+            return "";
+        }
+
+        bool japanese = ContinuousController.instance != null && ContinuousController.instance.language != Language.ENG;
+        string text = "";
+
+        foreach (CardSource card in permanent.DigivolutionCards)
+        {
+            if (card == null)
             {
-                Opening.instance.PlayCancelSE();
+                continue;
             }
+
+            string entry;
+            if (card.IsFlipped)
+            {
+                entry = "???";
+            }
+            else
+            {
+                string effect = japanese ? card.InheritedEffectDiscription_JPN : card.InheritedEffectDiscription_ENG;
+                if (string.IsNullOrWhiteSpace(effect))
+                {
+                    continue;
+                }
+
+                string name = japanese ? card.BaseJPNCardNameFromEntity : card.BaseENGCardNameFromEntity;
+                entry = name + "\n" + effect.Trim();
+            }
+
+            if (text.Length > 0)
+            {
+                text += "\n\n";
+            }
+
+            text += entry;
         }
 
-        _first = true;
-
-        KeywordTooltip.Hide();
-        gameObject.SetActive(false);
+        return text.Replace("、", ",").Replace("，", ",");
     }
 
     static void EnsureKeywordHover(TextMeshProUGUI text)

@@ -11,13 +11,27 @@ public class ResultObject : MonoBehaviour
     [SerializeField] Text ResultText;
     public Button ReturnToResultButton;
 
+    /// <summary>True while the opponent-deck preview is open so Bo3 auto-leave waits.</summary>
+    public static bool HoldAutoLeave { get; private set; }
+
+    public static void SetHoldAutoLeave(bool hold)
+    {
+        HoldAutoLeave = hold;
+    }
+
     public void Init()
     {
         this.gameObject.SetActive(false);
     }
 
-    public void ShowResult(Player Winner, bool Surrendered, string effectName = "")
+    void OnDestroy()
     {
+        HoldAutoLeave = false;
+    }
+
+    public void ShowResult(Player Winner, bool Surrendered, string effectName = "", ReplayData finishedReplay = null)
+    {
+        HoldAutoLeave = false;
         this.gameObject.SetActive(true);
 
         string log = "\nEnd Game";
@@ -216,6 +230,15 @@ public class ResultObject : MonoBehaviour
             RelabelTournamentReturnButton(director.ShouldReloadNextGame);
         }
         // === DCGO-CUSTOM:friends end ===
+
+        try
+        {
+            OpponentDeckPreview.Attach(this, finishedReplay, ResultText != null ? ResultText.font : null);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[Deck] Opponent deck button failed: {ex.Message}");
+        }
 
         PlayLog.OnAddLog?.Invoke(log);
     }

@@ -21,6 +21,12 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
     //Wheteher Selecting some card
     public bool IsSelecting = false;
 
+    /// <summary>
+    /// True only while the main phase is idle, waiting for the next action.
+    /// DNA material picks are recorded in that gap and are not part of resolution.
+    /// </summary>
+    public bool IsAwaitingMainPhaseInput { get; private set; }
+
     //Effects in use
     public bool isExecuting;
 
@@ -1490,7 +1496,9 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
             #region Wait until selection is complete
             while (PlayCard == null && UseCardEffect == null && AttackingPermanent == null)
             {
+                IsAwaitingMainPhaseInput = true;
                 yield return null;
+                IsAwaitingMainPhaseInput = false;
 
                 if (endGame)
                 {
@@ -1688,9 +1696,12 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
 
                 if (gameContext.TurnPhase != GameContext.phase.Main)
                 {
+                    IsAwaitingMainPhaseInput = false;
                     goto EndMainPhase;
                 }
             }
+
+            IsAwaitingMainPhaseInput = false;
 
             ResetUI();
             #endregion
@@ -3826,6 +3837,9 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
 
         // === DCGO-CUSTOM:replay begin ===
         // Finalize replay before EndGame filler selections are queued.
+        // Keep the finished record so the result screen can still read deck codes
+        // after MatchRecorder clears its buffer.
+        ReplayData finishedReplay = null;
         if (ContinuousController.instance != null &&
             (ContinuousController.instance.isReplay || ContinuousController.instance.isTournamentSpectator))
         {
@@ -3835,18 +3849,18 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
         {
             int winnerId = Winner != null ? Winner.PlayerID : -1;
             bool disconnect = Winner == null;
-            var replayData = MatchRecorder.Finalize(winnerId, Surrendered, disconnect, TurnCount);
-            if (replayData != null)
+            finishedReplay = MatchRecorder.Finalize(winnerId, Surrendered, disconnect, TurnCount);
+            if (finishedReplay != null)
             {
-                if (string.IsNullOrEmpty(replayData.player0Name) && gameContext != null)
+                if (string.IsNullOrEmpty(finishedReplay.player0Name) && gameContext != null)
                 {
                     var p0 = gameContext.PlayerFromID(0);
                     var p1 = gameContext.PlayerFromID(1);
-                    replayData.player0Name = p0 != null ? p0.PlayerName : "";
-                    replayData.player1Name = p1 != null ? p1.PlayerName : "";
+                    finishedReplay.player0Name = p0 != null ? p0.PlayerName : "";
+                    finishedReplay.player1Name = p1 != null ? p1.PlayerName : "";
                 }
 
-                MatchHistoryStore.SaveReplay(replayData);
+                MatchHistoryStore.SaveReplay(finishedReplay);
             }
         }
         // === DCGO-CUSTOM:replay end ===
@@ -3907,7 +3921,7 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
 
         GManager.instance.LoadingObject.gameObject.SetActive(false);
 
-        GManager.instance.resultObject.ShowResult(Winner, Surrendered, effectName);
+        GManager.instance.resultObject.ShowResult(Winner, Surrendered, effectName, finishedReplay);
 
         EventSystem.current.SetSelectedGameObject(GManager.instance.resultObject.transform.GetChild(3).gameObject);
 

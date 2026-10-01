@@ -413,7 +413,7 @@ public class GManager : MonoBehaviourPun
                 : BattleReconnectService.CountActivePlayers();
             if (PhotonNetwork.CurrentRoom != null && activeFighters < 2)
             {
-                if (BattleReconnectService.HasInactiveOpponent())
+                if (BattleReconnectService.WaitForOpponent && BattleReconnectService.HasInactiveOpponent())
                 {
                     reconnect?.EnsureHoldForOpponent();
                     yield return null;
