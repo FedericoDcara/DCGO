@@ -30,6 +30,7 @@ public class VRDuelDisk : MonoBehaviour
     VRLabel _counts;
     VRButton3D _endButton;
     int _lastMemory = int.MinValue;
+    int _lastCountsKey = -1;
     string _lastCounts;
 
     public static VRDuelDisk Create(Transform leftHand, Board3D board)
@@ -345,12 +346,12 @@ public class VRDuelDisk : MonoBehaviour
         }
 
         Player you = context.You;
-        string counts = $"SEC {you.SecurityCards.Count}  DECK {you.LibraryCards.Count}  TRASH {you.TrashCards.Count}";
+        int countsKey = you.SecurityCards.Count * 1000000 + you.LibraryCards.Count * 1000 + you.TrashCards.Count;
 
-        if (counts != _lastCounts)
+        if (countsKey != _lastCountsKey)
         {
-            _lastCounts = counts;
-            _counts.text = counts;
+            _lastCountsKey = countsKey;
+            _counts.text = $"SEC {you.SecurityCards.Count}  DECK {you.LibraryCards.Count}  TRASH {you.TrashCards.Count}";
         }
 
         Set(_phase, _board.PhaseText);

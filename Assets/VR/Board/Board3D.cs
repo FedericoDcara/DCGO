@@ -1174,9 +1174,30 @@ public class Board3D : MonoBehaviour
         _memoryToken.localPosition = Vector3.Lerp(_memoryToken.localPosition, target, 1f - Mathf.Exp(-10f * Time.deltaTime));
     }
 
+    int _statusKey = int.MinValue;
+
     void UpdateStatus(GameContext context)
     {
         LegalActionSet set = LegalActions.Current;
+
+        // Rebuild the status / HUD strings only when something they show changed
+        // (string building every frame was a steady source of garbage).
+        bool flashing = !string.IsNullOrEmpty(_flash) && Time.unscaledTime < _flashUntil;
+        int key = 17;
+        key = key * 31 + (set.IsYourBreedingPhase ? 1 : 0);
+        key = key * 31 + (set.IsYourMainPhase ? 1 : 0);
+        key = key * 31 + (context.TurnPlayer == null ? 0 : context.TurnPlayer.isYou ? 1 : 2);
+        key = key * 31 + (int)context.TurnPhase;
+        key = key * 31 + context.Memory;
+        key = key * 31 + context.Opponent.HandCards.Count;
+        key = key * 31 + (flashing ? _flash.GetHashCode() : 0);
+
+        if (key == _statusKey)
+        {
+            return;
+        }
+
+        _statusKey = key;
         string text;
         bool canPress;
 
@@ -1203,6 +1224,15 @@ public class Board3D : MonoBehaviour
             text = "Opponent's turn";
             _endButton.SetLabel("End Turn");
             canPress = false;
+        }
+
+        // Lead with the real phase (the disk console and HUD show this line first).
+        string phaseName = context.TurnPhase == GameContext.phase.Active ? "Unsuspend" : context.TurnPhase.ToString();
+        string turn = context.TurnPlayer != null && context.TurnPlayer.isYou ? "Your" : "Opp.";
+
+        if (context.TurnPhase != GameContext.phase.None)
+        {
+            text = $"{turn} {phaseName} phase\n" + text.Replace("Breeding phase\n", "").Replace("Your main phase", "Play, digivolve or attack").Replace("Opponent's turn", "Opponent is playing");
         }
 
         PhaseText = text;

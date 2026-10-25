@@ -27,6 +27,9 @@ public class VRSession : MonoBehaviour
     public VRDuelDisk DuelDisk { get; private set; }
     public VRPromptPanel Prompt { get; private set; }
     public VRSettingsPanel Settings { get; private set; }
+    public VRKeyboard Keyboard { get; private set; }
+    public VRMenu Menu { get; private set; }
+    public VRPerf Perf { get; private set; }
 
     void Update()
     {
@@ -36,20 +39,27 @@ public class VRSession : MonoBehaviour
         }
 
         // Optionally hide the side screen during a duel (everything is in VR); always show it in menus.
-        bool inDuel = BoardObserver.Context != null && BoardObserver.Context.You != null;
-        Rig.SetScreenVisible(!(VRSettings.HideScreenInDuel && inDuel && Rig.DuelMode));
+        // The battle scene loads on top of the menu scene; from that moment on it is a duel
+        // (opponent intro, first player, mulligan prompts appear on the game screen).
+        bool inDuel = (BoardObserver.Context != null && BoardObserver.Context.You != null) || GManager.instance != null;
+        Rig.SetMenuLayout(!inDuel);
+        Menu.SetVisible(!inDuel);
+        // In menus the native VR menu replaces the flat screen whenever it has a page for it.
+        bool screenVisible = inDuel ? !(VRSettings.HideScreenInDuel && Rig.DuelMode) : !Menu.ShowsPage;
+        Rig.SetScreenVisible(screenVisible);
+        GameScreen.Paused = !screenVisible;
     }
 
     // Moves the 3D board between the hologram (Duel Disk view) and the table.
     void ApplyView()
     {
-        Board.SetVisible(Rig.BoardMode);
+        Board.SetVisible(Rig.BoardMode && !Rig.MenuLayout);
         Board.transform.SetParent(Rig.DuelMode ? Rig.HoloAnchor : Rig.TableTop, false);
         Board.transform.localPosition = Vector3.zero;
         Board.transform.localRotation = Quaternion.identity;
         Board.transform.localScale = Vector3.one;
         Board.SetDuelStyle(Rig.DuelMode);
-        DuelDisk.gameObject.SetActive(Rig.DuelMode);
+        DuelDisk.gameObject.SetActive(Rig.DuelMode && !Rig.MenuLayout);
     }
     public VRGrabber Grabber { get; private set; }
 
@@ -132,6 +142,11 @@ public class VRSession : MonoBehaviour
         Prompt = VRPromptPanel.Create(Board);
         Board.HandHeld = !VRSettings.HandFloating;
         Settings = VRSettingsPanel.Create(transform, Rig, Board);
+        Keyboard = VRKeyboard.Create(transform, Rig);
+        Menu = VRMenu.Create(transform, Rig);
+        VRPhaseBar.Create(transform, Board, Rig.Camera.transform);
+        Perf = VRPerf.Create(transform, Rig);
+        VRPerf.ApplyRenderScale();
         Rig.ViewChanged += ApplyView;
         ApplyView();
 
@@ -141,6 +156,46 @@ public class VRSession : MonoBehaviour
         _active = true;
         Debug.Log("[DCGO VR] VR session started with loader: " + manager.activeLoader.name);
         StartCoroutine(LogControllers());
+        StartCoroutine(ReconnectWatchdog(manager));
+    }
+
+    // The headset runtime can end the session (Air Link dropped, headset asleep,
+    // Link not started yet when Play was pressed). Keep trying to start OpenXR
+    // again so the headset picks the game up as soon as it is available,
+    // without restarting Play mode.
+    IEnumerator ReconnectWatchdog(XRManagerSettings manager)
+    {
+        bool announced = false;
+
+        while (true)
+        {
+            yield return new WaitForSecondsRealtime(10f);
+
+            if (manager == null || manager.activeLoader != null)
+            {
+                announced = false;
+                continue;
+            }
+
+            if (!announced)
+            {
+                Debug.Log("[DCGO VR] Headset session ended - waiting for the headset (put it on / reconnect Air Link)...");
+                announced = true;
+            }
+
+            yield return manager.InitializeLoader();
+
+            if (manager.activeLoader != null)
+            {
+                manager.StartSubsystems();
+                _weStartedXR = true;
+                Debug.Log("[DCGO VR] Headset reconnected.");
+            }
+            else
+            {
+                yield return new WaitForSecondsRealtime(5f);
+            }
+        }
     }
 
     // Development aid: lists every controller and its button names once they connect,

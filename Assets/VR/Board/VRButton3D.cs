@@ -122,7 +122,18 @@ public class VRButton3D : MonoBehaviour
         }
     }
 
-    public void SetHovered(bool hovered) => _hovered = hovered;
+    public void SetHovered(bool hovered)
+    {
+        _hovered = hovered;
+
+        if (hovered)
+        {
+            LastHovered = Time.unscaledTime;
+        }
+    }
+
+    /// <summary>When the laser or a hand last pointed at this button (for previews).</summary>
+    public float LastHovered { get; private set; } = -1f;
 
     public void Press()
     {

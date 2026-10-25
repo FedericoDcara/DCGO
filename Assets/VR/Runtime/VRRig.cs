@@ -51,6 +51,38 @@ public class VRRig : MonoBehaviour
 
     public event System.Action ViewChanged;
 
+    /// <summary>
+    /// True outside a duel (title, deck editor, lobby): the game screen becomes a
+    /// big cinema screen straight ahead and the table / hologram are hidden.
+    /// </summary>
+    public bool MenuLayout { get; private set; }
+
+    /// <summary>Screen transform (for things docked to it, like the keyboard).</summary>
+    public Transform Screen => _screen;
+
+    /// <summary>Where the native VR menu stands (rig space): ahead of the seat at arm's-length reading distance.</summary>
+    public Transform MenuAnchor { get; private set; }
+
+    public void SetMenuLayout(bool menu)
+    {
+        if (MenuLayout == menu)
+        {
+            return;
+        }
+
+        MenuLayout = menu;
+        ApplyTableLayout();
+        ViewChanged?.Invoke();
+        Debug.Log("[DCGO VR] Layout: " + (menu ? "menu screen" : "duel view"));
+    }
+
+    // Menu cinema screen (rig space, relative to the seat and eye height).
+    const float MenuScreenWidth = 2.1f;
+    const float MenuScreenDistance = 1.75f;
+    const float MenuScreenBelowEye = 0.12f;
+    float _menuHeightOffset;
+    float _menuDistanceOffset;
+
     /// <summary>Next view: Duel Disk -> Table -> flat screen (3 angles) -> Duel Disk.</summary>
     public void CycleView()
     {
@@ -130,6 +162,7 @@ public class VRRig : MonoBehaviour
         _hands[XRNode.RightHand] = new HandInput("{RightHand}");
 
         HoloAnchor = NewChild("HoloAnchor", transform);
+        MenuAnchor = NewChild("MenuAnchor", transform);
         LoadHoloPlacement();
         BuildRoom(gameScreen);
 
@@ -207,8 +240,14 @@ public class VRRig : MonoBehaviour
         pedestal.localScale = new Vector3(0.35f, _tableHeight, 0.35f);
 
         bool duel = DuelMode;
-        pedestal.gameObject.SetActive(!duel);
-        _tableRoot.Find("TableTop").gameObject.SetActive(!duel);
+        pedestal.gameObject.SetActive(!duel && !MenuLayout);
+        _tableRoot.Find("TableTop").gameObject.SetActive(!duel && !MenuLayout);
+
+        if (MenuLayout)
+        {
+            ApplyMenuLayout();
+            return;
+        }
 
         if (duel)
         {
@@ -267,6 +306,29 @@ public class VRRig : MonoBehaviour
         _screen.localScale = new Vector3(SideScreenWidth, height, 1f);
         _screen.localPosition = position;
         _screen.localRotation = Quaternion.LookRotation(position - eye, Vector3.up);
+    }
+
+    // Menus: a large screen straight ahead, slightly below the eyes and tilted
+    // to face them. B/Y + stick up/down moves it up/down, B/Y + stick left/right
+    // pushes it nearer/further.
+    void ApplyMenuLayout()
+    {
+        if (_screen.parent != transform)
+        {
+            _screen.SetParent(transform, false);
+        }
+
+        float height = MenuScreenWidth * VRGameScreen.Height / VRGameScreen.Width;
+        Vector3 eye = new Vector3(SeatPosition.x, _eyeHeight, SeatPosition.z);
+        float distance = Mathf.Clamp(MenuScreenDistance + _menuDistanceOffset, 0.9f, 3.5f);
+        Vector3 position = eye + new Vector3(0f, -MenuScreenBelowEye + _menuHeightOffset, distance);
+        _screen.localScale = new Vector3(MenuScreenWidth, height, 1f);
+        _screen.localPosition = position;
+        _screen.localRotation = Quaternion.LookRotation(position - eye, Vector3.up);
+
+        Vector3 menu = eye + new Vector3(0f, -0.14f + _menuHeightOffset, Mathf.Clamp(1.15f + _menuDistanceOffset * 0.5f, 0.7f, 2.2f));
+        MenuAnchor.localPosition = menu;
+        MenuAnchor.localRotation = Quaternion.LookRotation(menu - eye, Vector3.up);
     }
 
     // ---------------------------------------------------------------- grab the world (hologram placement)
@@ -425,7 +487,13 @@ public class VRRig : MonoBehaviour
 
     void HandleComfortInput(HandInput hand, XRNode node)
     {
-        if (hand.SecondaryHeld)
+        if (hand.SecondaryHeld && MenuLayout && Mathf.Abs(hand.Stick.x) > 0.25f && Mathf.Abs(hand.Stick.x) > Mathf.Abs(hand.Stick.y))
+        {
+            hand.SecondaryUsedForAdjust = true;
+            _menuDistanceOffset = Mathf.Clamp(_menuDistanceOffset + hand.Stick.x * 0.6f * Time.unscaledDeltaTime, -0.85f, 1.75f);
+            ApplyTableLayout();
+        }
+        else if (hand.SecondaryHeld)
         {
             float y = hand.Stick.y;
 
@@ -433,7 +501,11 @@ public class VRRig : MonoBehaviour
             {
                 hand.SecondaryUsedForAdjust = true;
 
-                if (DuelMode)
+                if (MenuLayout)
+                {
+                    _menuHeightOffset = Mathf.Clamp(_menuHeightOffset + y * 0.5f * Time.unscaledDeltaTime, -0.8f, 0.8f);
+                }
+                else if (DuelMode)
                 {
                     _holoHeightOffset = Mathf.Clamp(_holoHeightOffset + y * 0.5f * Time.unscaledDeltaTime, -0.8f, 0.8f);
                 }

@@ -107,3 +107,5 @@ crashlytics-build.properties
 # .NET test project build output
 tests/**/[Bb]in/
 tests/**/[Oo]bj/
+# Personal 3D models (not to be uploaded)
+/_DSTSModels/

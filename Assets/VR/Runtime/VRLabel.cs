@@ -77,6 +77,7 @@ public class VRLabel : MonoBehaviour
             if (_text.text != value)
             {
                 _text.text = value;
+                VRLabelAtlas.MarkDirty();
             }
         }
     }
@@ -89,6 +90,7 @@ public class VRLabel : MonoBehaviour
             if (_text.color != value)
             {
                 _text.color = value;
+                VRLabelAtlas.MarkDirty();
             }
         }
     }
@@ -101,18 +103,27 @@ public class VRLabel : MonoBehaviour
             if (_plate.color != value)
             {
                 _plate.color = value;
+                VRLabelAtlas.MarkDirty();
             }
         }
     }
 
     public TextAlignmentOptions alignment
     {
-        set => _text.alignment = value;
+        set
+        {
+            _text.alignment = value;
+            VRLabelAtlas.MarkDirty();
+        }
     }
 
     public bool enableWordWrapping
     {
-        set => _text.enableWordWrapping = value;
+        set
+        {
+            _text.enableWordWrapping = value;
+            VRLabelAtlas.MarkDirty();
+        }
     }
 
     /// <summary>Plate size in metres. The text is auto-sized to fill it.</summary>
@@ -138,6 +149,7 @@ public class VRLabel : MonoBehaviour
             int heightPx = _pixelHeight > 0 ? _pixelHeight : value.y >= 0.08f ? 128 : 64;
             RectInt pixels = atlas.Allocate(value.x / Mathf.Max(0.001f, value.y), heightPx, out _cells);
             atlas.Place(_plate, _text, pixels);
+            VRLabelAtlas.MarkDirty();
 
             Vector4 st = new Vector4(
                 pixels.width / (float)VRLabelAtlas.TextureSize,
@@ -157,6 +169,7 @@ public class VRLabel : MonoBehaviour
         if (_plate != null)
         {
             _plate.gameObject.SetActive(true);
+            VRLabelAtlas.MarkDirty();
         }
     }
 
@@ -185,7 +198,7 @@ public class VRLabel : MonoBehaviour
 /// <summary>Shared texture + hidden camera/canvas that all VRLabels are drawn into.</summary>
 public class VRLabelAtlas : MonoBehaviour
 {
-    public const int TextureSize = 2048;
+    public const int TextureSize = 4096;
     const int CellW = 256;
     const int CellH = 64;
     const int Cols = TextureSize / CellW;
@@ -193,6 +206,39 @@ public class VRLabelAtlas : MonoBehaviour
     const int AtlasLayer = 30;
 
     static VRLabelAtlas _instance;
+
+    // The atlas camera only renders while something changed (plus a slow safety
+    // refresh): redrawing a 4096 texture with mipmaps every frame is expensive.
+    static int _dirtyFrames = 3;
+    Camera _camera;
+    float _nextSafetyRender;
+
+    public static void MarkDirty() => _dirtyFrames = 3;
+
+    void LateUpdate()
+    {
+        bool render = _dirtyFrames > 0 || Time.unscaledTime >= _nextSafetyRender;
+
+        if (render && _dirtyFrames <= 0)
+        {
+            _dirtyFrames = 1;
+        }
+
+        if (render)
+        {
+            _nextSafetyRender = Time.unscaledTime + 2f;
+        }
+
+        if (_camera != null && _camera.enabled != render)
+        {
+            _camera.enabled = render;
+        }
+
+        if (_dirtyFrames > 0)
+        {
+            _dirtyFrames--;
+        }
+    }
     public static bool HasInstance => _instance != null;
 
     public static VRLabelAtlas Instance
@@ -247,6 +293,7 @@ public class VRLabelAtlas : MonoBehaviour
         camera.nearClipPlane = 0.1f;
         camera.farClipPlane = 10f;
         camera.depth = -100;
+        _camera = camera;
 
         GameObject canvasGo = new GameObject("LabelCanvas") { layer = AtlasLayer };
         canvasGo.transform.SetParent(transform, false);

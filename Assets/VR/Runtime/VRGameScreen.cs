@@ -25,6 +25,59 @@ public class VRGameScreen : MonoBehaviour
 
     Camera _xrCamera;
     float _nextScan;
+    bool _paused;
+    readonly List<Camera> _pausedCameras = new List<Camera>();
+
+    /// <summary>
+    /// Stops drawing the flat game into the texture while nobody can see it (VR menu
+    /// page shown, side screen hidden in a duel). The game itself keeps running:
+    /// only its cameras stop rendering, UI logic and input are untouched.
+    /// </summary>
+    public bool Paused
+    {
+        get => _paused;
+        set
+        {
+            if (_paused == value)
+            {
+                return;
+            }
+
+            _paused = value;
+
+            if (_paused)
+            {
+                PauseCameras();
+            }
+            else
+            {
+                foreach (Camera cam in _pausedCameras)
+                {
+                    if (cam != null)
+                    {
+                        cam.enabled = true;
+                    }
+                }
+
+                _pausedCameras.Clear();
+                Scan();
+            }
+
+            Debug.Log("[DCGO VR] Game screen rendering " + (_paused ? "paused (not visible)" : "resumed"));
+        }
+    }
+
+    void PauseCameras()
+    {
+        foreach (Camera cam in Camera.allCameras)
+        {
+            if (cam.targetTexture == Texture && cam != _xrCamera)
+            {
+                cam.enabled = false;
+                _pausedCameras.Add(cam);
+            }
+        }
+    }
     readonly HashSet<int> _boostedCanvases = new HashSet<int>();
 
     void Awake()
@@ -91,6 +144,20 @@ public class VRGameScreen : MonoBehaviour
         }
 
         Camera uiCamera = FindUICamera();
+
+        if (_paused)
+        {
+            // New cameras (scene loads) still get their canvases converted, then pause too.
+            ConvertCanvases(uiCamera);
+            PauseCameras();
+            return;
+        }
+
+        ConvertCanvases(uiCamera);
+    }
+
+    void ConvertCanvases(Camera uiCamera)
+    {
 
         if (uiCamera == null)
         {

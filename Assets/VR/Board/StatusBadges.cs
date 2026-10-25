@@ -12,7 +12,7 @@ using UnityEngine;
 // expensive rule checks are refreshed a few times per second, not per frame.
 public class StatusBadges
 {
-    const float Refresh = 0.35f;
+    const float Refresh = 1.2f;
     const float ChipW = 0.084f;
     const float ChipH = 0.019f;
     const float ChipStep = 0.021f;
@@ -36,6 +36,7 @@ public class StatusBadges
         public VRLabel Dp;
         public readonly List<VRLabel> Chips = new List<VRLabel>();
         public float NextRefresh;
+        public int SeenChange;
         public string DpText;
         public Color DpPlate;
         public readonly List<KeyValuePair<string, Color>> Status = new List<KeyValuePair<string, Color>>();
@@ -46,9 +47,20 @@ public class StatusBadges
     readonly Dictionary<Permanent, Entry> _entries = new Dictionary<Permanent, Entry>();
     readonly List<Permanent> _remove = new List<Permanent>();
 
+    static int _lastEvaluationFrame = -1;
+    static int _boardChanged;
+
     public StatusBadges(Transform parent)
     {
         _parent = parent;
+
+        if (BoardObserver.Instance != null)
+        {
+            BoardObserver.Instance.CardMoved += (card, from, to) => _boardChanged++;
+            BoardObserver.Instance.SuspendedChanged += (permanent, suspended) => _boardChanged++;
+            BoardObserver.Instance.MemoryChanged += (from, to) => _boardChanged++;
+            BoardObserver.Instance.PhaseChanged += (phase, player) => _boardChanged++;
+        }
     }
 
     public void BeginFrame()
@@ -75,9 +87,13 @@ public class StatusBadges
 
         entry.Seen = true;
 
-        if (Time.unscaledTime >= entry.NextRefresh)
+        // The rule queries walk every effect on the field, so at most one permanent
+        // is re-evaluated per frame; board changes ask for a refresh of all of them.
+        if ((Time.unscaledTime >= entry.NextRefresh || _boardChanged > entry.SeenChange) && Time.frameCount != _lastEvaluationFrame)
         {
-            entry.NextRefresh = Time.unscaledTime + Refresh;
+            _lastEvaluationFrame = Time.frameCount;
+            entry.NextRefresh = Time.unscaledTime + Refresh + UnityEngine.Random.Range(0f, 0.3f);
+            entry.SeenChange = _boardChanged;
             Evaluate(permanent, entry);
         }
 

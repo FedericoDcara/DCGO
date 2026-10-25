@@ -9,6 +9,14 @@ public static class VRSettings
     public static bool Haptics { get => Get("Haptics", true); set => Set("Haptics", value); }
     public static bool HandFloating { get => Get("HandFloating", false); set => Set("HandFloating", value); }
     public static bool CardPreview { get => Get("Preview", true); set => Set("Preview", value); }
+    public static bool PerfStats { get => Get("PerfStats", false); set => Set("PerfStats", value); }
+
+    /// <summary>Headset render resolution in percent (eye texture scale).</summary>
+    public static int RenderScale
+    {
+        get => PlayerPrefs.GetInt("DCGO_VR_RenderScale", 100);
+        set => PlayerPrefs.SetInt("DCGO_VR_RenderScale", value);
+    }
 
     static bool Get(string key, bool fallback)
     {

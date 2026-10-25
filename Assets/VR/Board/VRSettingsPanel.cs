@@ -51,6 +51,14 @@ public class VRSettingsPanel : MonoBehaviour
         Add(() => "Hand fan: " + (_board.HandSpread > 0.5f ? "Wide" : "Tight"), () => _board.HandSpread = _board.HandSpread > 0.5f ? 0.15f : 1f);
         Add(() => "Big card preview: " + (VRSettings.CardPreview ? "On" : "Off"), () => VRSettings.CardPreview = !VRSettings.CardPreview);
         Add(() => "Vibration: " + (VRSettings.Haptics ? "On" : "Off"), () => VRSettings.Haptics = !VRSettings.Haptics);
+        Add(() => "Render quality: " + VRSettings.RenderScale + "%", () =>
+        {
+            int[] steps = { 80, 100, 120, 140 };
+            int index = Array.IndexOf(steps, VRSettings.RenderScale);
+            VRSettings.RenderScale = steps[(index + 1) % steps.Length];
+            VRPerf.ApplyRenderScale();
+        });
+        Add(() => "Performance stats: " + (VRSettings.PerfStats ? "On" : "Off"), () => VRSettings.PerfStats = !VRSettings.PerfStats);
         Add(() => "Reset hologram position", () => _rig.ResetHoloPlacement());
         Add(() => "Close", Close);
 

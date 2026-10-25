@@ -45,6 +45,9 @@ public class VRGrabber : MonoBehaviour
 
     // [hand][0 = trigger, 1 = grip]
     readonly bool[,] _previous = new bool[2, 2];
+    bool _boardWasHidden;
+    static readonly XRNode[] RightThenLeft = { XRNode.RightHand, XRNode.LeftHand };
+    static readonly XRNode[] LeftThenRight = { XRNode.LeftHand, XRNode.RightHand };
     readonly Collider[] _overlap = new Collider[24];
 
     const string SpreadPrefKey = "DCGO_VR_HandSpread";
@@ -103,7 +106,13 @@ public class VRGrabber : MonoBehaviour
         VRRig.HandInput left = _rig.Hand(XRNode.LeftHand);
         left.Tick();
 
-        if ((left.MenuPressedThisFrame || left.StickClickPressedThisFrame) && _board.Visible && _board.ViewerOpen)
+        if ((left.MenuPressedThisFrame || left.StickClickPressedThisFrame) && !_board.Visible)
+        {
+            // Menus (no board): the left menu button opens the VR settings.
+            VRSession.Instance?.Settings?.Toggle();
+            VRLaserPointer.Haptic(XRNode.LeftHand, 0.3f, 0.04f);
+        }
+        else if ((left.MenuPressedThisFrame || left.StickClickPressedThisFrame) && _board.Visible && _board.ViewerOpen)
         {
             // Left stick click closes an open trash viewer first.
             _board.CloseViewer();
@@ -117,9 +126,19 @@ public class VRGrabber : MonoBehaviour
 
         if (!_board.Visible)
         {
-            CancelHold();
+            // Release anything held once when the board goes away; doing it every
+            // frame would also forget the trigger state and re-press buttons.
+            if (!_boardWasHidden)
+            {
+                _boardWasHidden = true;
+                CancelHold();
+            }
+
+            HandleButtonsOnly();
             return;
         }
+
+        _boardWasHidden = false;
 
         HandleSpreadInput(left);
         HandleSwipeGesture();
@@ -145,7 +164,7 @@ public class VRGrabber : MonoBehaviour
         Card3D hover = null;
         bool touching = false;
 
-        foreach (XRNode node in new[] { XRNode.RightHand, XRNode.LeftHand })
+        foreach (XRNode node in RightThenLeft)
         {
             Transform hand = _rig.HandTransform(node);
             Buttons b = node == XRNode.RightHand ? right : leftButtons;
@@ -534,6 +553,59 @@ public class VRGrabber : MonoBehaviour
 
     // Left controller adjusts the held fan (only when the left hand is not the laser hand,
     // so X keeps meaning right-click and the stick keeps meaning scroll for a left laser).
+    // Without the board (menus, flat views) only the 3D buttons work: the VR
+    // keyboard, the settings panel. Touch them or point the laser + trigger.
+    void HandleButtonsOnly()
+    {
+        Buttons right = Read(XRNode.RightHand);
+        Buttons leftButtons = Read(XRNode.LeftHand);
+        bool touching = false;
+
+        foreach (XRNode node in RightThenLeft)
+        {
+            VRButton3D touched = FindTouchedButton(_rig.HandTransform(node));
+
+            if (touched == null)
+            {
+                continue;
+            }
+
+            touching = true;
+            touched.SetHovered(true);
+            Buttons b = node == XRNode.RightHand ? right : leftButtons;
+
+            if (b.TriggerDown || b.GripDown)
+            {
+                touched.Press();
+                VRLaserPointer.Haptic(node, 0.5f, 0.05f);
+            }
+        }
+
+        _laser.BlockScreenInput = touching;
+        _laser.Hidden = touching;
+
+        if (touching || !_laser.HasHit || _laser.CurrentHit.collider == null)
+        {
+            return;
+        }
+
+        VRButton3D button = _laser.CurrentHit.collider.GetComponentInParent<VRButton3D>();
+
+        if (button == null)
+        {
+            return;
+        }
+
+        button.SetHovered(true);
+        Buttons laserHand = _laser.ActiveHand == XRNode.RightHand ? right : leftButtons;
+
+        if (laserHand.TriggerDown)
+        {
+            button.Press();
+            VRLaserPointer.Haptic(_laser.ActiveHand, 0.4f, 0.04f);
+        }
+    }
+
     // Long stacks: either thumbstick up/down scrolls the stack list
     // (unless the hand's B/Y is held, which adjusts the table height).
     void HandleStackScroll()
@@ -545,7 +617,7 @@ public class VRGrabber : MonoBehaviour
 
         float y = 0f;
 
-        foreach (XRNode node in new[] { XRNode.LeftHand, XRNode.RightHand })
+        foreach (XRNode node in LeftThenRight)
         {
             VRRig.HandInput hand = _rig.Hand(node);
 
