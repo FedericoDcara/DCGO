@@ -187,7 +187,9 @@ public class Opening : MonoBehaviour
         PointerEventData pointer = new PointerEventData(EventSystem.current)
         {
             // マウスポインタの位置にレイ飛ばし、ヒットしたものを保存
-            position = Input.mousePosition
+            // === DCGO-CUSTOM:vr begin ===
+            position = PointerInput.mousePosition
+            // === DCGO-CUSTOM:vr end ===
         };
         EventSystem.current.RaycastAll(pointer, results);
 
@@ -403,8 +405,12 @@ public class Opening : MonoBehaviour
     {
         GameObject effect = Instantiate(OnClickEffect, canvasRect.transform);
 
-        var mousePos = Input.mousePosition;
-        var magnification = canvasRect.sizeDelta.x / Screen.width;
+        // === DCGO-CUSTOM:vr begin ===
+        var mousePos = PointerInput.mousePosition;
+        // === DCGO-CUSTOM:vr end ===
+        // === DCGO-CUSTOM:vr begin ===
+        var magnification = canvasRect.sizeDelta.x / PointerInput.screenWidth;
+        // === DCGO-CUSTOM:vr end ===
         mousePos.x = mousePos.x * magnification - canvasRect.sizeDelta.x / 2;
         mousePos.y = mousePos.y * magnification - canvasRect.sizeDelta.y / 2;
         mousePos.z = 0;// -0.5f;// transform.localPosition.z;

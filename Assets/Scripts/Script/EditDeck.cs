@@ -855,7 +855,9 @@ public class EditDeck : MonoBehaviour
             }
         }
 
-        if (Input.GetMouseButton(1))
+        // === DCGO-CUSTOM:vr begin ===
+        if (PointerInput.GetMouseButton(1))
+        // === DCGO-CUSTOM:vr end ===
         {
             yield break;
         }

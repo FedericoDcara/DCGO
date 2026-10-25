@@ -213,7 +213,9 @@ public class CheckCardPanel : MonoBehaviour
             void PointerClick(CardSource cardSource1)
             {
                 #region right click
-                if (Input.GetMouseButtonUp(1))
+                // === DCGO-CUSTOM:vr begin ===
+                if (PointerInput.GetMouseButtonUp(1))
+                // === DCGO-CUSTOM:vr end ===
                 {
                     if (cardSource1 != null)
                     {
@@ -243,7 +245,9 @@ public class CheckCardPanel : MonoBehaviour
                 #endregion
 
                 #region left click
-                else if (Input.GetMouseButtonUp(0))
+                // === DCGO-CUSTOM:vr begin ===
+                else if (PointerInput.GetMouseButtonUp(0))
+                // === DCGO-CUSTOM:vr end ===
                 {
                     handCard.OnClickAction?.Invoke(handCard);
                 }

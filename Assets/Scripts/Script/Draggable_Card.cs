@@ -74,7 +74,9 @@ public class Draggable_Card : Draggable
         {
             OnDrag(null);
 
-            if (Input.GetMouseButtonUp(0))
+            // === DCGO-CUSTOM:vr begin ===
+            if (PointerInput.GetMouseButtonUp(0))
+            // === DCGO-CUSTOM:vr end ===
             {
                 if (this == null)
                 {

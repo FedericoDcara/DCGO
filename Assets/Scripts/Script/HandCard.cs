@@ -935,14 +935,18 @@ public class HandCard : MonoBehaviour
     public void PointerClick(BaseEventData eventData)
     {
         #region right click
-        if (Input.GetMouseButtonUp(1))
+        // === DCGO-CUSTOM:vr begin ===
+        if (PointerInput.GetMouseButtonUp(1))
+        // === DCGO-CUSTOM:vr end ===
         {
             OnRightClicked();
         }
         #endregion
 
         #region left click
-        else if (Input.GetMouseButtonUp(0))
+        // === DCGO-CUSTOM:vr begin ===
+        else if (PointerInput.GetMouseButtonUp(0))
+        // === DCGO-CUSTOM:vr end ===
         {
             OnClickAction?.Invoke(this);
         }

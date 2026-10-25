@@ -1757,7 +1757,9 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
 
                                     TargetArrow targetArrow = GManager.instance.CreateTargetArrow();
 
-                                    targetArrow.SetTargetArrow(fieldPermanentCard2.ThisPermanent.PermanentFrame.GetLocalCanvasPosition() + fieldPermanentCard2.ThisPermanent.TopCard.Owner.playerUIObjectParent.localPosition, Draggable.GetLocalPosition(Input.mousePosition, targetArrow.transform));
+                                    // === DCGO-CUSTOM:vr begin ===
+                                    targetArrow.SetTargetArrow(fieldPermanentCard2.ThisPermanent.PermanentFrame.GetLocalCanvasPosition() + fieldPermanentCard2.ThisPermanent.TopCard.Owner.playerUIObjectParent.localPosition, Draggable.GetLocalPosition(PointerInput.mousePosition, targetArrow.transform));
+                                    // === DCGO-CUSTOM:vr end ===
 
                                     foreach (FieldPermanentCard fieldPermanentCard3 in gameContext.TurnPlayer.FieldPermanentObjects)
                                     {
@@ -1809,7 +1811,9 @@ public class TurnStateMachine : MonoBehaviourPunCallbacks
 
                                 if (targetArrow != null)
                                 {
-                                    targetArrow.SetTargetArrow(fieldPermanentCard2.ThisPermanent.PermanentFrame.GetLocalCanvasPosition() + fieldPermanentCard2.ThisPermanent.TopCard.Owner.playerUIObjectParent.localPosition, Draggable.GetLocalPosition(Input.mousePosition, targetArrow.transform));
+                                    // === DCGO-CUSTOM:vr begin ===
+                                    targetArrow.SetTargetArrow(fieldPermanentCard2.ThisPermanent.PermanentFrame.GetLocalCanvasPosition() + fieldPermanentCard2.ThisPermanent.TopCard.Owner.playerUIObjectParent.localPosition, Draggable.GetLocalPosition(PointerInput.mousePosition, targetArrow.transform));
+                                    // === DCGO-CUSTOM:vr end ===
 
                                     foreach (FieldPermanentCard enemyFieldPermanentCard in GManager.instance.Opponent.FieldPermanentObjects)
                                     {

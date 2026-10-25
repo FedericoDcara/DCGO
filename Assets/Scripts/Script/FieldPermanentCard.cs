@@ -264,12 +264,16 @@ public class FieldPermanentCard : MonoBehaviour
         {
             if (ThisPermanent.TopCard != null)
             {
-                if (Input.GetMouseButtonUp(0))
+                // === DCGO-CUSTOM:vr begin ===
+                if (PointerInput.GetMouseButtonUp(0))
+                // === DCGO-CUSTOM:vr end ===
                 {
                     OnClickAction?.Invoke(this);
                 }
 
-                else if (Input.GetMouseButtonUp(1))
+                // === DCGO-CUSTOM:vr begin ===
+                else if (PointerInput.GetMouseButtonUp(1))
+                // === DCGO-CUSTOM:vr end ===
                 {
                     OnRightClicked();
                 }

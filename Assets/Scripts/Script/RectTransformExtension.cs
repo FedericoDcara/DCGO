@@ -11,7 +11,9 @@ public static class RectTransformExtension
  /// <param name="camera">Camera. Leave it null for Overlay Canvasses.</param>
     private static int CountCornersVisibleFrom(this RectTransform rectTransform, Camera camera = null)
     {
-        Rect screenBounds = new Rect(0f, 0f, Screen.width, Screen.height); // Screen space bounds (assumes camera renders across the entire screen)
+        // === DCGO-CUSTOM:vr begin ===
+        Rect screenBounds = new Rect(0f, 0f, PointerInput.screenWidth, PointerInput.screenHeight); // Screen space bounds (assumes camera renders across the entire screen)
+        // === DCGO-CUSTOM:vr end ===
         Vector3[] objectCorners = new Vector3[4];
         rectTransform.GetWorldCorners(objectCorners);
 
@@ -70,7 +72,9 @@ public static class RectTransformExtension
         */
 
         //modified
-        Rect screenBounds = new Rect(0f, 0f, Screen.width, Screen.height); // Screen space bounds (assumes camera renders across the entire screen)
+        // === DCGO-CUSTOM:vr begin ===
+        Rect screenBounds = new Rect(0f, 0f, PointerInput.screenWidth, PointerInput.screenHeight); // Screen space bounds (assumes camera renders across the entire screen)
+        // === DCGO-CUSTOM:vr end ===
         Vector3[] objectCorners = new Vector3[4];
         rectTransform.GetWorldCorners(objectCorners);
 

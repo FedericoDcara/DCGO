@@ -20,13 +20,17 @@ public class Draggable_Window : Draggable
     }
     public override void OnBeginDrag(BaseEventData eventData)
     {
-        startInputLocalPos = GetLocalPosition(Input.mousePosition, this.transform);
+        // === DCGO-CUSTOM:vr begin ===
+        startInputLocalPos = GetLocalPosition(PointerInput.mousePosition, this.transform);
+        // === DCGO-CUSTOM:vr end ===
         startLocalPos = this.self.localPosition;
     }
 
     public override void OnDrag(BaseEventData eventData)
     {
-        this.self.localPosition = GetLocalPosition(Input.mousePosition, this.transform) - startInputLocalPos + startLocalPos;
+        // === DCGO-CUSTOM:vr begin ===
+        this.self.localPosition = GetLocalPosition(PointerInput.mousePosition, this.transform) - startInputLocalPos + startLocalPos;
+        // === DCGO-CUSTOM:vr end ===
     }
 
     public override void OnEndDrag(BaseEventData eventData)

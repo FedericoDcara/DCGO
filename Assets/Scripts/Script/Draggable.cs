@@ -43,7 +43,9 @@ public class Draggable : MonoBehaviour
 
     public virtual void OnDrag(BaseEventData eventData)
     {
-        this.self.localPosition = GetLocalPosition(Input.mousePosition, this.transform);
+        // === DCGO-CUSTOM:vr begin ===
+        this.self.localPosition = GetLocalPosition(PointerInput.mousePosition, this.transform);
+        // === DCGO-CUSTOM:vr end ===
     }
 
     public static Vector3 GetLocalPosition(Vector3 position, Transform transform)
@@ -130,7 +132,9 @@ public class Draggable : MonoBehaviour
 
         List<RaycastResult> results = new List<RaycastResult>();
         // Ray skip to mouse pointer position and save hits
-        pointer.position = Input.mousePosition;
+        // === DCGO-CUSTOM:vr begin ===
+        pointer.position = PointerInput.mousePosition;
+        // === DCGO-CUSTOM:vr end ===
         EventSystem.current.RaycastAll(pointer, results);
 
         List<DropArea> DropAreas = new List<DropArea>();

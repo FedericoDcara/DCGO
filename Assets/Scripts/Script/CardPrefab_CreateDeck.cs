@@ -535,7 +535,9 @@ public class CardPrefab_CreateDeck : MonoBehaviour
             PointerEventData pointer = new PointerEventData(EventSystem.current)
             {
                 // マウスポインタの位置にレイ飛ばし、ヒットしたものを保存
-                position = Input.mousePosition
+                // === DCGO-CUSTOM:vr begin ===
+                position = PointerInput.mousePosition
+                // === DCGO-CUSTOM:vr end ===
             };
             EventSystem.current.RaycastAll(pointer, results);
             // ヒットしたUIの名前
@@ -607,7 +609,9 @@ public class CardPrefab_CreateDeck : MonoBehaviour
             PointerEventData pointer = new PointerEventData(EventSystem.current)
             {
                 // マウスポインタの位置にレイ飛ばし、ヒットしたものを保存
-                position = Input.mousePosition
+                // === DCGO-CUSTOM:vr begin ===
+                position = PointerInput.mousePosition
+                // === DCGO-CUSTOM:vr end ===
             };
             EventSystem.current.RaycastAll(pointer, results);
             // ヒットしたUIの名前
