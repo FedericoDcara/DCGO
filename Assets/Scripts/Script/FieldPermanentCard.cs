@@ -438,6 +438,15 @@ public class FieldPermanentCard : MonoBehaviour
 
     public void ShowPermanentData(bool updateIsTapped)
     {
+        // Display-only reads: share effect lists / stats across all queries made while drawing.
+        using (EffectQueryCache.Scope())
+        {
+            ShowPermanentDataInternal(updateIsTapped);
+        }
+    }
+
+    void ShowPermanentDataInternal(bool updateIsTapped)
+    {
         if (ThisPermanent == null)
         {
             return;
@@ -514,7 +523,9 @@ public class FieldPermanentCard : MonoBehaviour
                 {
                     if (textCardColorMaterial.cardColor == ThisPermanent.TopCard.CardColors[0])
                     {
-                        LevelText.fontSharedMaterial = new Material(textCardColorMaterial.material);
+                        // Was `new Material(...)` on every refresh: leaked a Material per card per refresh and broke batching.
+                        if (LevelText.fontSharedMaterial != textCardColorMaterial.material)
+                            LevelText.fontSharedMaterial = textCardColorMaterial.material;
                         break;
                     }
                 }
@@ -668,15 +679,6 @@ public class FieldPermanentCard : MonoBehaviour
             DirectStrikeText.transform.parent.parent.localRotation = Quaternion.Euler(0, 0, -1 * this.transform.localRotation.eulerAngles.z);
         }
 
-        if (ThisPermanent.TopCard.Owner.GetFieldPermanents().Count >= ThisPermanent.TopCard.Owner.fieldCardFrames.Count * 0.7f)
-        {
-            _updateFrame = 115;
-        }
-
-        else
-        {
-            _updateFrame = 75;
-        }
 
         #region Get long press
 #if !UNITY_EDITOR && UNITY_ANDROID
@@ -699,14 +701,56 @@ public class FieldPermanentCard : MonoBehaviour
             return;
         }
 
-        else
-        {
-            _frameCount = 0;
-        }
+        _frameCount = 0;
         #endregion
 
-        ShowPermanentData(true);
+        RefreshAllFieldCards();
     }
+
+    #region Batched refresh
+    // All field cards refresh together inside ONE EffectQueryCache scope, so each permanent's
+    // effect list / DP / Level is computed once per refresh instead of once per card that reads it
+    // (the old per-card refresh made a full board cost O(cards^2) effect-list rebuilds).
+    static readonly List<FieldPermanentCard> _activeCards = new List<FieldPermanentCard>();
+    static int _lastBatchFrame = -1;
+
+    void OnEnable()
+    {
+        if (!_activeCards.Contains(this)) _activeCards.Add(this);
+    }
+
+    void OnDisable()
+    {
+        _activeCards.Remove(this);
+    }
+
+    static void RefreshAllFieldCards()
+    {
+        if (_lastBatchFrame == UnityEngine.Time.frameCount)
+        {
+            return;
+        }
+
+        _lastBatchFrame = UnityEngine.Time.frameCount;
+
+        FieldPermanentCard[] cards = _activeCards.ToArray();
+
+        using (EffectQueryCache.Scope())
+        {
+            foreach (FieldPermanentCard card in cards)
+            {
+                if (card == null || card.destroyed || card.skipUpdate) continue;
+                if (card.ThisPermanent == null || card.ThisPermanent.TopCard == null) continue;
+
+                Player owner = card.ThisPermanent.TopCard.Owner;
+                card._updateFrame = owner.GetFieldPermanents().Count >= owner.fieldCardFrames.Count * 0.7f ? 115 : 75;
+                card._frameCount = 0;
+
+                card.ShowPermanentData(true);
+            }
+        }
+    }
+    #endregion
     #endregion
 
     public void PointerDown(BaseEventData eventData)

@@ -49,6 +49,18 @@ public class Permanent
     {
         get
         {
+            if (!EffectQueryCache.IsActive) return Level_Uncached;
+            if (EffectQueryCache.TryGetStat(this, 0, out int cached)) return cached;
+            int value = Level_Uncached;
+            EffectQueryCache.StoreStat(this, 0, value);
+            return value;
+        }
+    }
+
+    int Level_Uncached
+    {
+        get
+        {
             int Level = 0;
 
             if (TopCard != null)
@@ -497,6 +509,18 @@ public class Permanent
         return DP;
     }
     public int DP
+    {
+        get
+        {
+            if (!EffectQueryCache.IsActive) return DP_Uncached;
+            if (EffectQueryCache.TryGetStat(this, 1, out int cached)) return cached;
+            int value = DP_Uncached;
+            EffectQueryCache.StoreStat(this, 1, value);
+            return value;
+        }
+    }
+
+    int DP_Uncached
     {
         get
         {
@@ -1427,6 +1451,14 @@ public class Permanent
     #region このパーマネントの効果リスト
     public List<ICardEffect> EffectList(EffectTiming timing)
     {
+        if (EffectQueryCache.IsActive)
+        {
+            if (EffectQueryCache.TryGetEffects(this, timing, out List<ICardEffect> cached)) return cached;
+            List<ICardEffect> built = EffectList_ForCard(timing, TopCard);
+            EffectQueryCache.StoreEffects(this, timing, built);
+            return new List<ICardEffect>(built);
+        }
+
         return EffectList_ForCard(timing, TopCard);
     }
     #endregion
@@ -2451,6 +2483,18 @@ public class Permanent
     {
         get
         {
+            if (!EffectQueryCache.IsActive) return HasBlocker_Uncached;
+            if (EffectQueryCache.TryGetStat(this, 2, out int cached)) return cached != 0;
+            bool value = HasBlocker_Uncached;
+            EffectQueryCache.StoreStat(this, 2, value ? 1 : 0);
+            return value;
+        }
+    }
+
+    bool HasBlocker_Uncached
+    {
+        get
+        {
             #region if attacking digimon has collision
             if (GManager.instance.attackProcess.ActiveAttack() && CardEffectCommons.IsPermanentExistsOnBattleArea(this))
             {
@@ -2760,6 +2804,18 @@ public class Permanent
 
     #region Has Rush
     public bool HasRush
+    {
+        get
+        {
+            if (!EffectQueryCache.IsActive) return HasRush_Uncached;
+            if (EffectQueryCache.TryGetStat(this, 3, out int cached)) return cached != 0;
+            bool value = HasRush_Uncached;
+            EffectQueryCache.StoreStat(this, 3, value ? 1 : 0);
+            return value;
+        }
+    }
+
+    bool HasRush_Uncached
     {
         get
         {

@@ -747,7 +747,10 @@ public class HandCard : MonoBehaviour
 
             CostText.transform.parent.gameObject.SetActive(true);
 
-            CostText.text = $"{cardSource.PayingCost(SelectCardEffect.Root.Hand, null, checkAvailability: false)}";
+            using (EffectQueryCache.Scope())
+            {
+                CostText.text = $"{cardSource.PayingCost(SelectCardEffect.Root.Hand, null, checkAvailability: false)}";
+            }
         }
     }
 

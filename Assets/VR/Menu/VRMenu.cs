@@ -170,6 +170,15 @@ public partial class VRMenu : MonoBehaviour
             gameObject.SetActive(visible);
             _signature = null;
         }
+
+        // The panel lives under the rig's menu anchor, not under this object:
+        // hide it explicitly (otherwise the last page, e.g. "Please wait", stays up in the duel).
+        if (!visible && _root != null && _root.gameObject.activeSelf)
+        {
+            _root.gameObject.SetActive(false);
+            _preview.gameObject.SetActive(false);
+            _spec = null;
+        }
     }
 
     void Update()

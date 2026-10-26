@@ -29,8 +29,11 @@ public class VRPromptPanel : MonoBehaviour
     const float ButtonH = 0.038f;
     int ButtonsPerRow => _wrist ? 2 : 3;
     float MinWidth => _wrist ? 0.32f : 0.6f;
-    const float SideYaw = -38f;      // degrees to the left of where you look
+    const float SideYaw = 0f;        // straight ahead of where you look (card choices need your attention)
     const float SideDistance = 0.62f;
+    const float FollowAngle = 40f;   // free-standing panel: comes back beside your view when it is further away than this
+    bool _gliding;
+    string _placedMessage = "";
 
     Board3D _board;
     Transform _root;
@@ -115,6 +118,11 @@ public class VRPromptPanel : MonoBehaviour
         {
             UpdateEntries();
 
+            if (!_wrist && _board.Head != null)
+            {
+                FollowView(_board.Head);
+            }
+
             if (_wrist && _board.Head != null)
             {
                 // Docked on the arm: always turn to face you.
@@ -168,6 +176,14 @@ public class VRPromptPanel : MonoBehaviour
             _hadCards = hasCards;
             Open();
         }
+        else if (!_wrist && message != _placedMessage && _board.Head != null)
+        {
+            // A new question while the panel stays open: put it beside where you look now.
+            _placedMessage = message;
+            SideSpot(_board.Head, out Vector3 world, out Quaternion rotation);
+            _root.SetPositionAndRotation(world, rotation);
+            _gliding = false;
+        }
 
         if (signature != _signature)
         {
@@ -198,12 +214,9 @@ public class VRPromptPanel : MonoBehaviour
         else
         {
             // To the left of where you are looking, angled toward you, slightly low.
-            Vector3 forward = head.forward;
-            forward.y = 0f;
-            forward = forward.sqrMagnitude > 1e-4f ? forward.normalized : Vector3.forward;
-            Vector3 side = Quaternion.Euler(0f, SideYaw, 0f) * forward;
-            Vector3 world = head.position + side * SideDistance + Vector3.down * 0.08f;
-            Quaternion worldRotation = Quaternion.LookRotation(side, Vector3.up) * Quaternion.Euler(8f, 0f, 0f);
+            SideSpot(head, out Vector3 world, out Quaternion worldRotation);
+            _placedMessage = VRPromptBridge.Message;
+            _gliding = false;
 
             _root.SetParent(_board.transform, false);
             _position = _board.transform.InverseTransformPoint(world);
@@ -219,6 +232,47 @@ public class VRPromptPanel : MonoBehaviour
         _signature = "";
         SetVisible(true);
         Debug.Log("[DCGO VR] Prompt panel opened: " + VRPromptBridge.Message + " | " + VRPromptBridge.DescribeHandSelection());
+    }
+
+    // Beside your current view: to the left, angled toward you, slightly low (world space).
+    static void SideSpot(Transform head, out Vector3 world, out Quaternion rotation)
+    {
+        Vector3 forward = head.forward;
+        forward.y = 0f;
+        forward = forward.sqrMagnitude > 1e-4f ? forward.normalized : Vector3.forward;
+        Vector3 side = Quaternion.Euler(0f, SideYaw, 0f) * forward;
+        world = head.position + side * SideDistance + Vector3.down * 0.12f; // in front, a little below eye level
+        rotation = Quaternion.LookRotation(side, Vector3.up) * Quaternion.Euler(8f, 0f, 0f);
+    }
+
+    // Stays put while you look at / near it (no moving under the laser); when you turn so it is
+    // far out of view (e.g. behind you), it glides back beside your view.
+    void FollowView(Transform head)
+    {
+        Vector3 forward = head.forward;
+        forward.y = 0f;
+        Vector3 toPanel = _root.position - head.position;
+        toPanel.y = 0f;
+
+        if (!_gliding && forward.sqrMagnitude > 1e-4f && toPanel.sqrMagnitude > 1e-4f && Vector3.Angle(forward, toPanel) > FollowAngle)
+        {
+            _gliding = true;
+        }
+
+        if (!_gliding)
+        {
+            return;
+        }
+
+        SideSpot(head, out Vector3 world, out Quaternion rotation);
+        float t = 1f - Mathf.Exp(-6f * Time.unscaledDeltaTime);
+        _root.position = Vector3.Lerp(_root.position, world, t);
+        _root.rotation = Quaternion.Slerp(_root.rotation, rotation, t);
+
+        if ((_root.position - world).sqrMagnitude < 0.0004f)
+        {
+            _gliding = false;
+        }
     }
 
     void Close()

@@ -833,6 +833,19 @@ public class Player : MonoBehaviour
     #region All effects on the player
     public List<ICardEffect> EffectList(EffectTiming timing)
     {
+        if (EffectQueryCache.IsActive)
+        {
+            if (EffectQueryCache.TryGetEffects(this, timing, out List<ICardEffect> cached)) return cached;
+            List<ICardEffect> built = EffectList_Uncached(timing);
+            EffectQueryCache.StoreEffects(this, timing, built);
+            return new List<ICardEffect>(built);
+        }
+
+        return EffectList_Uncached(timing);
+    }
+
+    List<ICardEffect> EffectList_Uncached(EffectTiming timing)
+    {
         List<ICardEffect> PlayerEffects = new List<ICardEffect>();
 
         foreach (Func<EffectTiming, ICardEffect> GetCardEffect in PermanentEffects)

@@ -43,6 +43,20 @@ public static class VRMaterials
         return material;
     }
 
+    /// <summary>See-through unlit material (alpha from the colour), e.g. the duel desk backdrop.</summary>
+    public static Material Transparent(Color color)
+    {
+        Material material = Unlit(color);
+        material.SetFloat("_Surface", 1f);
+        material.SetFloat("_Blend", 0f);
+        material.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+        material.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+        material.SetInt("_ZWrite", 0);
+        material.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+        material.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+        return material;
+    }
+
     public static Material Screen(Texture texture)
     {
         Material material = new Material(Base);

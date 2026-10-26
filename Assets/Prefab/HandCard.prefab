@@ -2221,7 +2221,6 @@ GameObject:
   - component: {fileID: 329801427426899672}
   - component: {fileID: 207249644239728536}
   - component: {fileID: 9087347038748713873}
-  - component: {fileID: 1364320078677296417}
   - component: {fileID: 2070552995372131039}
   m_Layer: 5
   m_Name: CardImage
@@ -2471,32 +2470,6 @@ MonoBehaviour:
             m_StringArgument: 
             m_BoolArgument: 0
           m_CallState: 2
---- !u!114 &1364320078677296417
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2174480844560435728}
-  m_Enabled: 0
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f19b7e2285c104f6ca47d583f3e5444f, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  m_EffectFactor: 0.33
-  m_Width: 0.1
-  m_Rotation: 135
-  m_Softness: 1
-  m_Brightness: 0.34
-  m_Gloss: 1
-  m_EffectArea: 0
-  m_Player:
-    play: 1
-    initialPlayDelay: 0
-    duration: 1.3
-    loop: 1
-    loopDelay: 0
-    updateMode: 0
 --- !u!114 &2070552995372131039
 MonoBehaviour:
   m_ObjectHideFlags: 0

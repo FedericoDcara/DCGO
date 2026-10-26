@@ -362,6 +362,16 @@ public static class VRPromptBridge
                 return "";
             }
 
+            if (g.resultObject != null && g.resultObject.gameObject.activeInHierarchy)
+            {
+                return ResultMessage(g.resultObject);
+            }
+
+            if (g.resultObject != null && g.resultObject.ReturnToResultButton != null && g.resultObject.ReturnToResultButton.gameObject.activeInHierarchy)
+            {
+                return "Duel over - checking the field";
+            }
+
             if (g.selectCardPanel != null && g.selectCardPanel.gameObject.activeInHierarchy && g.selectCardPanel.MessageText != null)
             {
                 return g.selectCardPanel.MessageText.text;
@@ -401,6 +411,51 @@ public static class VRPromptBridge
         AddButtons(g.selectDNACondition, buttons, labels);
         AddButtons(g.selectBurstDigivolutionEffect, buttons, labels);
         AddButtons(g.selectAppFusionEffect, buttons, labels);
+
+        // End of the duel: the result screen's buttons (back to menu, check the field...), and the
+        // button that brings the result back after "check the field".
+        if (g.resultObject != null)
+        {
+            AddButtons(g.resultObject, buttons, labels);
+
+            if (g.resultObject.ReturnToResultButton != null)
+            {
+                AddButtons(g.resultObject.ReturnToResultButton, buttons, labels);
+            }
+        }
+    }
+
+    static readonly System.Reflection.FieldInfo ResultWinImage = typeof(ResultObject).GetField("WinImage", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+    static readonly System.Reflection.FieldInfo ResultLoseImage = typeof(ResultObject).GetField("LoseImage", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+    static readonly System.Reflection.FieldInfo ResultTextField = typeof(ResultObject).GetField("ResultText", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+
+    /// <summary>Title for the result screen: VICTORY / DEFEAT / the game's result text.</summary>
+    static string ResultMessage(ResultObject result)
+    {
+        string title = "DUEL OVER";
+
+        try
+        {
+            if (ResultWinImage != null && ResultWinImage.GetValue(result) is Image win && win != null && win.gameObject.activeSelf)
+            {
+                title = "VICTORY";
+            }
+            else if (ResultLoseImage != null && ResultLoseImage.GetValue(result) is Image lose && lose != null && lose.gameObject.activeSelf)
+            {
+                title = "DEFEAT";
+            }
+
+            if (ResultTextField != null && ResultTextField.GetValue(result) is Text text && text != null && !string.IsNullOrWhiteSpace(text.text))
+            {
+                title += " - " + text.text.Trim();
+            }
+        }
+        catch (System.Exception)
+        {
+            // keep the generic title
+        }
+
+        return title;
     }
 
     static void AddButtons(Component root, List<Button> buttons, List<string> labels)

@@ -11,12 +11,21 @@ public static class VRCapture
     static Camera _camera;
     static RenderTexture _target;
 
+    /// <summary>Off by default: each capture renders 1080p, reads it back and PNG-encodes it on the
+    /// main thread (100-300 ms hitch). Turn on only when you want review screenshots.</summary>
+    public static bool Enabled = false;
+
     public static string Folder => Path.GetFullPath(Path.Combine(Application.dataPath, "..", "Logs", "VRCaptures"));
 
     /// <summary>Renders the VR room from <paramref name="eye"/> looking along <paramref name="forward"/>.</summary>
     public static void Capture(string name, Vector3 eye, Quaternion rotation, float fov = 62f)
     {
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
+        if (!Enabled)
+        {
+            return;
+        }
+
         try
         {
             if (_camera == null)

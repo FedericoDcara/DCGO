@@ -98,6 +98,8 @@ public class VRPerf : MonoBehaviour
     public static void ApplyRenderScale()
     {
         float scale = Mathf.Clamp(VRSettings.RenderScale, 50, 200) / 100f;
+        // The headset compositor paces frames; desktop VSync only caps the editor / mirror at 60.
+        QualitySettings.vSyncCount = 0;
 
         try
         {

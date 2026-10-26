@@ -12,9 +12,7 @@ using UnityEngine.XR;
 // Comfort controls (either hand):
 //   B / Y tap            recenter (puts you back in your seat, facing the table)
 //   B / Y hold + stick   raise / lower the table
-//   RIGHT thumbstick click  cycle view: Duel Disk (holographic field in front of
-//                           you + wrist disk) -> 3D board on a table ->
-//                           flat screen on the table (3 angles, no 3D board)
+//   (Duel Disk view only: arena + wrist disk. View switching was removed.)
 //   B / Y hold + stick      in Duel Disk view: raise / lower the hologram
 //   B / Y long press (1.5s) in Duel Disk view: reset the hologram's position / turn / size
 //   Both grips in empty space (Duel Disk view): grab the world - move, turn and
@@ -60,6 +58,12 @@ public class VRRig : MonoBehaviour
     /// <summary>Screen transform (for things docked to it, like the keyboard).</summary>
     public Transform Screen => _screen;
 
+    /// <summary>
+    /// The duel arena on the floor in front of the seat (rig space, y = floor):
+    /// 3D Digimon and Tamers stand here, yours near you, the opponent's far away.
+    /// </summary>
+    public Transform ArenaAnchor { get; private set; }
+
     /// <summary>Where the native VR menu stands (rig space): ahead of the seat at arm's-length reading distance.</summary>
     public Transform MenuAnchor { get; private set; }
 
@@ -83,10 +87,11 @@ public class VRRig : MonoBehaviour
     float _menuHeightOffset;
     float _menuDistanceOffset;
 
-    /// <summary>Next view: Duel Disk -> Table -> flat screen (3 angles) -> Duel Disk.</summary>
+    /// <summary>Only the Duel Disk view is used: switching views is disabled (always mode 0).
+    /// The Table / flat-screen layouts are kept in code but can no longer be reached.</summary>
     public void CycleView()
     {
-        _mode = (_mode + 1) % (TiltPresets.Length + 2);
+        _mode = 0;
         ApplyTableLayout();
         ViewChanged?.Invoke();
     }
@@ -101,11 +106,78 @@ public class VRRig : MonoBehaviour
     }
 
     // Hologram placement (rig space, relative to the seat and the eye height measured at recenter).
-    const float HoloDistance = 1.85f;
-    const float HoloBelowEye = 0.25f;
-    const float HoloTilt = 55f;
-    const float HoloScale = 1.1f;
+    // "Duel desk": the board sits low and close, tilted like a desk, so you can
+    // look over it at the arena stage right behind it (one view, no head turning).
+    const float HoloDistance = 1.2f;
+    const float HoloBelowEye = 0.80f;
+    const float HoloTilt = 22f;
+    const float HoloScale = 0.85f;
+
+    // Arena stage behind the desk: a little lower than the eyes, its front just
+    // above the desk's far edge as seen from the seat.
+    const float StageBehindDesk = 3.1f;   // seat-to-stage-centre minus HoloDistance
+    const float StageBelowEye = 0.95f;
+    const float OverviewDrop = 4.2f;       // stage depth below the eyes in overview
+    const float OverviewBack = 0.8f;       // arena pulled towards you in overview
     const float SideScreenWidth = 1.0f;
+
+    GameObject _floor;
+    GameObject _platform;
+
+    // Overview hides the room floor (the arena lies far below) and shows a small
+    // glowing platform under the seat so you still feel grounded.
+    void SetOverviewRoom(bool overview)
+    {
+        if (_floor != null && _floor.activeSelf == overview)
+        {
+            _floor.SetActive(!overview);
+        }
+
+        if (_platform == null && overview)
+        {
+            _platform = new GameObject("SeatPlatform") { layer = Layer };
+            _platform.transform.SetParent(transform, false);
+            _platform.transform.localPosition = new Vector3(SeatPosition.x, 0f, SeatPosition.z);
+
+            GameObject disc = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            SetupProp(disc, _platform.transform, new Color(0.07f, 0.09f, 0.13f), keepCollider: false);
+            disc.transform.localScale = new Vector3(0.8f, 0.02f, 0.8f); // just under your feet: the arena below stays in view
+            disc.transform.localPosition = new Vector3(0f, -0.02f, 0f);
+
+            GameObject rim = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            SetupProp(rim, _platform.transform, new Color(0.25f, 0.85f, 1f), keepCollider: false);
+            rim.transform.localScale = new Vector3(0.86f, 0.01f, 0.86f);
+            rim.transform.localPosition = new Vector3(0f, -0.035f, 0f);
+        }
+
+        if (_platform != null && _platform.activeSelf != overview)
+        {
+            _platform.SetActive(overview);
+        }
+    }
+
+    /// <summary>Moves the duel arena to the distance chosen in the VR settings.</summary>
+    public void ApplyArenaDistance()
+    {
+        if (MenuLayout)
+        {
+            if (_arenaPreview)
+            {
+                PlaceArena();
+            }
+
+            return;
+        }
+
+        if (DuelMode)
+        {
+            ApplyDuelLayout();
+            return;
+        }
+
+        ArenaAnchor.localPosition = new Vector3(SeatPosition.x, 0f, SeatPosition.z + VRSettings.ArenaDistance);
+        ArenaAnchor.localRotation = Quaternion.identity;
+    }
     float _eyeHeight = 1.2f;
     float _holoHeightOffset;
 
@@ -116,7 +188,7 @@ public class VRRig : MonoBehaviour
     Vector3 _grabStartOffset;
     float _grabStartYaw;
     float _grabStartScale;
-    const string HoloPrefKey = "DCGO_VR_Holo";
+    const string HoloPrefKey = "DCGO_VR_Holo2"; // new key: the desk layout starts from its defaults
 
     Transform _tableRoot;
     Transform _screen;
@@ -124,6 +196,7 @@ public class VRRig : MonoBehaviour
     float _tableHeight = DefaultTableHeight;
     bool _floorTracking;
     bool _recenteredOnce;
+    float _heightCheckUntil = 10f;   // keep checking the tracking origin this long after start / after an origin change
     int _validHeadFrames;
 
     readonly Dictionary<XRNode, HandInput> _hands = new Dictionary<XRNode, HandInput>();
@@ -142,6 +215,7 @@ public class VRRig : MonoBehaviour
     void Build(Texture gameScreen)
     {
         _floorTracking = TrySetFloorTracking();
+        WatchTrackingOrigin();
 
         TrackingSpace = NewChild("TrackingSpace", transform);
 
@@ -163,6 +237,8 @@ public class VRRig : MonoBehaviour
 
         HoloAnchor = NewChild("HoloAnchor", transform);
         MenuAnchor = NewChild("MenuAnchor", transform);
+        ArenaAnchor = NewChild("ArenaAnchor", transform);
+        ArenaAnchor.localPosition = new Vector3(SeatPosition.x, 0f, SeatPosition.z + VRSettings.ArenaDistance); // placed by the layout
         LoadHoloPlacement();
         BuildRoom(gameScreen);
 
@@ -195,6 +271,7 @@ public class VRRig : MonoBehaviour
         // Floor
         GameObject floor = GameObject.CreatePrimitive(PrimitiveType.Plane);
         floor.name = "Floor";
+        _floor = floor;
         SetupProp(floor, transform, new Color(0.11f, 0.12f, 0.15f), keepCollider: false);
         floor.transform.localScale = new Vector3(3f, 1f, 3f);
 
@@ -233,6 +310,8 @@ public class VRRig : MonoBehaviour
 
     void ApplyTableLayout()
     {
+        SetOverviewRoom(false); // the duel layout turns it back on when needed
+
         _tableRoot.localPosition = new Vector3(0f, _tableHeight, 0f);
 
         Transform pedestal = _tableRoot.Find("Pedestal");
@@ -246,6 +325,12 @@ public class VRRig : MonoBehaviour
         if (MenuLayout)
         {
             ApplyMenuLayout();
+
+            if (_arenaPreview)
+            {
+                PlaceArena();
+            }
+
             return;
         }
 
@@ -295,6 +380,8 @@ public class VRRig : MonoBehaviour
         HoloAnchor.localRotation = yaw * Quaternion.Euler(-HoloTilt, 0f, 0f);
         HoloAnchor.localScale = Vector3.one * HoloScale * _holoUserScale;
 
+        PlaceArena();
+
         if (_screen.parent != transform)
         {
             _screen.SetParent(transform, false);
@@ -306,6 +393,40 @@ public class VRRig : MonoBehaviour
         _screen.localScale = new Vector3(SideScreenWidth, height, 1f);
         _screen.localPosition = position;
         _screen.localRotation = Quaternion.LookRotation(position - eye, Vector3.up);
+    }
+
+    bool _arenaPreview;
+
+    /// <summary>Model studio: puts the arena exactly where a duel (Duel Disk view) has it, also in menus.</summary>
+    public void SetArenaPreview(bool on)
+    {
+        _arenaPreview = on;
+        ApplyTableLayout();
+    }
+
+    // The arena stage follows the desk (moving / turning the desk moves the stage too).
+    void PlaceArena()
+    {
+        float centerY = _eyeHeight - HoloBelowEye + _holoHeightOffset;
+        Vector3 seat = new Vector3(SeatPosition.x, centerY, SeatPosition.z);
+        Quaternion yaw = Quaternion.Euler(0f, _holoUserYaw, 0f);
+        float extra = VRSettings.ArenaDistance - 2.4f;
+        Vector3 stage = seat + yaw * new Vector3(0f, 0f, HoloDistance + StageBehindDesk + extra) + _holoUserOffset;
+        stage.y = _eyeHeight - StageBelowEye + _holoHeightOffset;
+
+        // Overview (default): you look down on the whole arena from above, like a
+        // commander's balcony; the room floor is hidden and a small platform holds you.
+        bool overview = VRSettings.ArenaOverview;
+
+        if (overview)
+        {
+            stage += yaw * new Vector3(0f, 0f, -OverviewBack);
+            stage.y = _eyeHeight - OverviewDrop + _holoHeightOffset;
+        }
+
+        ArenaAnchor.localPosition = stage;
+        ArenaAnchor.localRotation = yaw;
+        SetOverviewRoom(overview);
     }
 
     // Menus: a large screen straight ahead, slightly below the eyes and tilted
@@ -432,6 +553,42 @@ public class VRRig : MonoBehaviour
         driver.rotationInput = new InputActionProperty(rotation);
     }
 
+    // The headset can change its origin after start (guardian ready, Quest "reset view"...):
+    // re-check the height for a few seconds whenever it does.
+    void WatchTrackingOrigin()
+    {
+        _heightCheckUntil = Time.unscaledTime + 10f;
+        List<XRInputSubsystem> subsystems = new List<XRInputSubsystem>();
+        SubsystemManager.GetInstances(subsystems);
+
+        foreach (XRInputSubsystem subsystem in subsystems)
+        {
+            subsystem.trackingOriginUpdated += _ => _heightCheckUntil = Time.unscaledTime + 5f;
+        }
+    }
+
+    // Floor origin: the head is reported at standing / seated height (> 0.45 m) and needs no offset.
+    // Device origin (or floor not ready yet): the head is near 0, so lift the tracking space to a
+    // seated eye height. Returns true when the offset changed.
+    bool FixTrackingHeight()
+    {
+        float headY = Camera.transform.localPosition.y;
+        bool deviceOrigin = headY < 0.45f;
+        float wantY = deviceOrigin ? _tableHeight + SeatedEyeHeightAboveTable : 0f;
+
+        if (Mathf.Abs(TrackingSpace.localPosition.y - wantY) < 0.01f)
+        {
+            return false;
+        }
+
+        Vector3 position = TrackingSpace.localPosition;
+        position.y = wantY;
+        TrackingSpace.localPosition = position;
+        _floorTracking = !deviceOrigin;
+        Debug.Log($"[DCGO VR] Tracking height fixed: head {headY:F2} m in tracking space -> {(deviceOrigin ? "device origin, seated offset" : "floor origin")}");
+        return true;
+    }
+
     static bool TrySetFloorTracking()
     {
         List<XRInputSubsystem> subsystems = new List<XRInputSubsystem>();
@@ -473,9 +630,14 @@ public class VRRig : MonoBehaviour
 
             if (_validHeadFrames > 10)
             {
+                FixTrackingHeight();
                 Recenter();
                 _recenteredOnce = true;
             }
+        }
+        else if (Time.unscaledTime < _heightCheckUntil && FixTrackingHeight())
+        {
+            Recenter(); // re-measure the eye height and re-place the hologram / arena
         }
 
         foreach (KeyValuePair<XRNode, HandInput> pair in _hands)
@@ -542,10 +704,6 @@ public class VRRig : MonoBehaviour
             hand.SecondaryHeldTime = 0f;
         }
 
-        if (hand.StickClickPressedThisFrame && node == XRNode.RightHand)
-        {
-            CycleView();
-        }
     }
 
     /// <summary>Puts the player's head back in the seat, facing the table.</summary>

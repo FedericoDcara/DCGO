@@ -11,7 +11,6 @@ GameObject:
   - component: {fileID: 3364125622139530128}
   - component: {fileID: 3206254112146767352}
   - component: {fileID: 3204837386042232564}
-  - component: {fileID: 3397978428744362106}
   m_Layer: 10
   m_Name: ParticleDNA_Yellow
   m_TagString: Untagged
@@ -4825,16 +4824,3 @@ ParticleSystemRenderer:
   m_MeshWeighting2: 1
   m_MeshWeighting3: 1
   m_MaskInteraction: 0
---- !u!114 &3397978428744362106
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 3367084257170085952}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 4ae7c3387c4612e40b89c4899e4b3dba, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  rotateSpeed: 3

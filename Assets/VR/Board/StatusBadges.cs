@@ -50,6 +50,9 @@ public class StatusBadges
     static int _lastEvaluationFrame = -1;
     static int _boardChanged;
 
+    /// <summary>False: badges are still evaluated (TryGetStatus) but not drawn on the board.</summary>
+    public bool Visible = true;
+
     public StatusBadges(Transform parent)
     {
         _parent = parent;
@@ -61,6 +64,23 @@ public class StatusBadges
             BoardObserver.Instance.MemoryChanged += (from, to) => _boardChanged++;
             BoardObserver.Instance.PhaseChanged += (phase, player) => _boardChanged++;
         }
+    }
+
+    /// <summary>Latest DP text / plate colour and status chips of a permanent (for the 3D arena).</summary>
+    public bool TryGetStatus(Permanent permanent, out string dpText, out Color dpPlate, out List<KeyValuePair<string, Color>> status)
+    {
+        if (permanent != null && _entries.TryGetValue(permanent, out Entry entry))
+        {
+            dpText = entry.DpText;
+            dpPlate = entry.DpPlate;
+            status = entry.Status;
+            return true;
+        }
+
+        dpText = null;
+        dpPlate = default;
+        status = null;
+        return false;
     }
 
     public void BeginFrame()
@@ -95,6 +115,13 @@ public class StatusBadges
             entry.NextRefresh = Time.unscaledTime + Refresh + UnityEngine.Random.Range(0f, 0.3f);
             entry.SeenChange = _boardChanged;
             Evaluate(permanent, entry);
+        }
+
+        // Field hologram off: keep evaluating (the arena DP plates read it), draw nothing.
+        if (!Visible)
+        {
+            SetActive(entry, false);
+            return;
         }
 
         Quaternion flat = Quaternion.Euler(90f, 0f, 0f);

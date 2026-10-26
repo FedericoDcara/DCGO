@@ -69,7 +69,21 @@ public class VRPhaseBar : MonoBehaviour
     void LateUpdate()
     {
         GameContext context = BoardObserver.Context;
-        bool active = context != null && context.TurnPlayer != null && _board != null && _board.Visible;
+        // With the memory HUD on, the strip rides under the gauge at the top of your view;
+        // otherwise it lies along the far edge of the field.
+        VRMemoryHud hud = VRMemoryHud.Instance;
+        bool docked = hud != null && hud.Showing && hud.PhaseAnchor != null;
+        Transform parent = docked ? hud.PhaseAnchor : _board.transform;
+
+        if (_strip.parent != parent)
+        {
+            _strip.SetParent(parent, false);
+            _strip.localPosition = docked ? Vector3.zero : new Vector3(0f, 0.004f, 0.975f);
+            _strip.localRotation = docked ? Quaternion.identity : Quaternion.Euler(90f, 0f, 0f);
+            _strip.localScale = Vector3.one * (docked ? 0.27f : 1f);
+        }
+
+        bool active = context != null && context.TurnPlayer != null && _board != null && (_board.Visible || docked);
 
         if (_strip.gameObject.activeSelf != active)
         {

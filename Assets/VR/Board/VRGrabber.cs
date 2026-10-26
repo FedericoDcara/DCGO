@@ -98,6 +98,8 @@ public class VRGrabber : MonoBehaviour
 
     void Update()
     {
+        VRArenaTarget.Hovered = null; // set again below while the laser is on an arena figure
+
         if (_board == null || _rig == null || _laser == null)
         {
             return;
@@ -252,11 +254,22 @@ public class VRGrabber : MonoBehaviour
         Card3D pointed = null;
         VRButton3D button = null;
 
+        VRArenaTarget arena = null;
+
         if (!touching && _laser.HasHit && _laser.CurrentHit.collider != null)
         {
             pointed = _laser.CurrentHit.collider.GetComponentInParent<Card3D>();
             button = _laser.CurrentHit.collider.GetComponentInParent<VRButton3D>();
+
+            // A figure in the arena counts as its card on the desk.
+            if (pointed == null && button == null)
+            {
+                arena = _laser.CurrentHit.collider.GetComponentInParent<VRArenaTarget>();
+                pointed = _board.CardForArena(arena);
+            }
         }
+
+        VRArenaTarget.Hovered = arena;
 
         _board.SetHover(hover != null ? hover : pointed);
 
@@ -284,10 +297,19 @@ public class VRGrabber : MonoBehaviour
             button.Press();
             VRLaserPointer.Haptic(_laser.ActiveHand, 0.4f, 0.04f);
         }
+        else if (arena != null && arena.OpponentPlayer && !_board.HasTargetChoice)
+        {
+            _board.Flash("Point at one of your Digimon, choose Attack, then point here");
+        }
         else if (_board.HasTargetChoice)
         {
             // Waiting for an attack target / DNA partner: this press picks it (or cancels).
-            _board.ResolveTargetChoice(pointed);
+            // On her shields / her: attack the player directly (no security-card lookup needed).
+            if (!(arena != null && arena.OpponentPlayer && _board.ResolveSecurityTarget()))
+            {
+                _board.ResolveTargetChoice(pointed);
+            }
+
             VRLaserPointer.Haptic(_laser.ActiveHand, 0.5f, 0.05f);
         }
         else if (pointed != null && _board.HasTrashSlot && VRPromptBridge.IsDiscardPrompt
@@ -309,10 +331,18 @@ public class VRGrabber : MonoBehaviour
             // Card menu open: pointing at a glowing Digimon picks it as the digivolve target.
             _board.ResolvePending(pointed);
         }
-        else if (pointed != null && _board.TryOpenPermanentMenu(pointed))
+        else if (pointed != null && _board.TryOpenPermanentMenu(pointed, withAttack: arena != null))
         {
-            // Your Digimon / Tamer with a [Main] effect: menu on the disk (Attack / Activate...).
+            // Your Digimon / Tamer with a [Main] effect (or, in the arena, one that can attack):
+            // menu on the disk (Attack / Activate...).
             VRLaserPointer.Haptic(_laser.ActiveHand, 0.3f, 0.03f);
+        }
+        else if (arena != null)
+        {
+            // Arena figures are never dragged: say why nothing happens.
+            _board.Flash(pointed != null && pointed.Card.Owner != null && pointed.Card.Owner.isYou
+                ? LegalActions.Name(pointed.Card) + " can't attack or use an effect right now"
+                : "Opponent's card (A / X shows its stack)");
         }
         else if (pointed != null)
         {

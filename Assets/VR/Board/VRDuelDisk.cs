@@ -28,6 +28,10 @@ public class VRDuelDisk : MonoBehaviour
     VRLabel _memory;
     VRLabel _phase;
     VRLabel _counts;
+    VRLabel _info;               // what the game is waiting for / doing right now (+ the last instruction)
+    string _lastMessage = "";
+    float _lastMessageUntil;
+    float _nextInfo;
     VRButton3D _endButton;
     int _lastMemory = int.MinValue;
     int _lastCountsKey = -1;
@@ -58,6 +62,12 @@ public class VRDuelDisk : MonoBehaviour
         _phase = Text(new Vector3(0f, 0.0125f, 0.012f), new Vector2(0.062f, 0.026f), new Color(0.8f, 0.95f, 1f));
         _phase.enableWordWrapping = true;
         _counts = Text(new Vector3(0f, 0.0125f, -0.022f), new Vector2(0.062f, 0.016f), new Color(0.6f, 0.85f, 1f));
+        // Info screen: stands up at the far end of the disk (next to the security hologram) and turns
+        // to face you, much bigger than the console text. Hidden when there is nothing to say.
+        _info = VRLabel.Create(transform, InfoAnchor, Quaternion.identity, new Vector2(0.15f, 0.05f), "", new Color(1f, 0.88f, 0.5f), new Color(0.03f, 0.06f, 0.11f));
+        _info.enableWordWrapping = true;
+        _info.alignment = TextAlignmentOptions.Center;
+        _info.gameObject.SetActive(false);
 
         _endButton = VRButton3D.Create(transform, new Vector3(0f, 0.01f, -0.072f), "END", () => _board.PressEndTurn());
         _endButton.transform.localScale = Vector3.one * 0.45f;
@@ -331,6 +341,8 @@ public class VRDuelDisk : MonoBehaviour
             Set(_memory, "");
             Set(_phase, "No duel");
             Set(_counts, "");
+            Set(_info, "");
+            _info.gameObject.SetActive(false);
             _endButton.Interactable = false;
             return;
         }
@@ -355,6 +367,7 @@ public class VRDuelDisk : MonoBehaviour
         }
 
         Set(_phase, _board.PhaseText);
+        UpdateInfo(context);
 
         LegalActionSet set = LegalActions.Current;
         bool breeding = set.IsYourBreedingPhase && (set.CanHatch || set.CanMoveFromBreeding);
@@ -370,6 +383,134 @@ public class VRDuelDisk : MonoBehaviour
         }
         _endButton.SetLabel(_board.EndButtonLabel == "Skip" ? "SKIP" : "END");
         _endButton.Interactable = _board.EndButtonEnabled;
+    }
+
+    // ---------------------------------------------------------------- status line
+
+    const float LastMessageSeconds = 15f;
+    static readonly Vector3 InfoAnchor = new Vector3(0.02f, 0.1f, 0.13f); // disk space: high above the far end, clear of the controller model
+
+    void LateUpdate()
+    {
+        // Keep the info screen upright and facing the eyes whatever the arm does.
+        if (_info == null || !_info.gameObject.activeSelf || _board == null || _board.Head == null)
+        {
+            return;
+        }
+
+        Vector3 position = transform.TransformPoint(InfoAnchor);
+        Vector3 away = position - _board.Head.position;
+        _info.transform.position = position;
+
+        if (away.sqrMagnitude > 1e-6f)
+        {
+            _info.transform.rotation = Quaternion.LookRotation(away.normalized, Vector3.up);
+        }
+    }
+    const int MaxInfoChars = 90;
+
+    // Effect prompts / popups can close or be hidden quickly: the console always says what the
+    // game is waiting for (its instruction text), which card effect is resolving, or that the
+    // opponent is playing, and keeps the last instruction for a while after it disappears.
+    void UpdateInfo(GameContext context)
+    {
+        if (Time.unscaledTime < _nextInfo)
+        {
+            return;
+        }
+
+        _nextInfo = Time.unscaledTime + 0.2f;
+        TurnStateMachine tsm = GManager.instance != null ? GManager.instance.turnStateMachine : null;
+        string message = Clean(VRPromptBridge.Message);
+        string now = "";
+        string flash = _board.FlashMessage;
+
+        if (!string.IsNullOrEmpty(flash))
+        {
+            now = "<b>" + Clean(flash) + "</b>"; // short feedback ("Cancelled", "can't attack"...)
+        }
+        else if (message.Length > 0)
+        {
+            now = "<b>WAITING:</b> " + message;
+            _lastMessage = message;
+            _lastMessageUntil = Time.unscaledTime + LastMessageSeconds;
+        }
+        else if (tsm != null && tsm.isSecurityCehck)
+        {
+            now = "<b>SECURITY CHECK</b>";
+        }
+        else if (tsm != null && tsm.isExecuting)
+        {
+            string card = ExecutingCard(context);
+            now = "<b>RESOLVING</b>" + (card != null ? ": " + card : " effects...");
+        }
+        else if (context.TurnPlayer != null && !context.TurnPlayer.isYou)
+        {
+            now = "Opponent is playing...";
+        }
+
+        string text = now;
+
+        if (_lastMessage.Length > 0 && Time.unscaledTime < _lastMessageUntil && _lastMessage != message)
+        {
+            text += (text.Length > 0 ? "\n" : "") + "<color=#8FB8D8><size=80%>Last: " + _lastMessage + "</size></color>";
+        }
+
+        bool show = text.Length > 0;
+
+        if (_info.gameObject.activeSelf != show)
+        {
+            _info.gameObject.SetActive(show);
+        }
+
+        Set(_info, text);
+    }
+
+    static string ExecutingCard(GameContext context)
+    {
+        try
+        {
+            foreach (Player player in new[] { context.You, context.Opponent })
+            {
+                if (player == null || player.ExecutingCards == null)
+                {
+                    continue;
+                }
+
+                for (int i = player.ExecutingCards.Count - 1; i >= 0; i--)
+                {
+                    CardSource card = player.ExecutingCards[i];
+
+                    if (card != null)
+                    {
+                        return card.BaseENGCardNameFromEntity + (player == context.Opponent ? " (opp)" : "");
+                    }
+                }
+            }
+        }
+        catch (System.Exception)
+        {
+            // board mid-update
+        }
+
+        return null;
+    }
+
+    static string Clean(string message)
+    {
+        if (string.IsNullOrEmpty(message))
+        {
+            return "";
+        }
+
+        message = message.Replace("\r", " ").Replace("\n", " ").Trim();
+
+        while (message.Contains("  "))
+        {
+            message = message.Replace("  ", " ");
+        }
+
+        return message.Length > MaxInfoChars ? message.Substring(0, MaxInfoChars - 3) + "..." : message;
     }
 
     static void Set(VRLabel text, string value)

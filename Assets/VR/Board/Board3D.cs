@@ -43,7 +43,7 @@ public class Board3D : MonoBehaviour
     static readonly Vector3 EndButtonPos = new Vector3(0.72f, 0f, -0.66f);
     static readonly Vector3 PreviewPos = new Vector3(-0.70f, 0.30f, -0.55f);
 
-    static readonly Color SlotColor = new Color(0.10f, 0.12f, 0.18f);
+    static readonly Color SlotColor = new Color(0.10f, 0.12f, 0.18f, 0.55f);
     static readonly Color PlayColor = new Color(0.20f, 0.85f, 0.45f);
     static readonly Color DigivolveColor = new Color(1.00f, 0.75f, 0.15f);
     static readonly Color AttackColor = new Color(0.95f, 0.25f, 0.25f);
@@ -55,6 +55,7 @@ public class Board3D : MonoBehaviour
     public bool Visible => gameObject.activeSelf;
 
     Material _material;
+    Material _markerMaterial;
     readonly Dictionary<CardSource, Card3D> _cards = new Dictionary<CardSource, Card3D>();
     readonly HashSet<CardSource> _seen = new HashSet<CardSource>();
     readonly List<CardSource> _toRemove = new List<CardSource>();
@@ -126,6 +127,8 @@ public class Board3D : MonoBehaviour
         _overrides[card] = new CardOverride { Position = position, Rotation = rotation, Scale = scale, Hover = hover };
     }
     GameObject _holoBackdrop;
+    readonly HashSet<CardSource> _boardOnly = new HashSet<CardSource>(); // cards lying on the field this frame
+    bool _fieldHidden;
 
     /// <summary>Text and state of the End Turn button, mirrored on the wrist disk.</summary>
     public string PhaseText { get; private set; } = "";
@@ -170,8 +173,10 @@ public class Board3D : MonoBehaviour
     void Build()
     {
         _block = new MaterialPropertyBlock();
-        Material baseMaterial = VRMaterials.Unlit(Color.white);
-        _material = baseMaterial;
+        // Cards are opaque (stacks must sort by depth); only the zone markers are
+        // see-through, so the desk's empty zones let you look through to the arena.
+        _material = VRMaterials.Unlit(Color.white);
+        _markerMaterial = VRMaterials.Transparent(Color.white);
 
         for (int side = 0; side < 2; side++)
         {
@@ -224,7 +229,18 @@ public class Board3D : MonoBehaviour
         BuildPanel();
         _viewer = new PileViewer(this, c => VRMaterials.Unlit(c));
         _badges = new StatusBadges(transform);
+        _models = new VRFieldModels(Arena != null ? Arena : transform, _badges);
     }
+
+    VRFieldModels _models;
+
+    /// <summary>Floor area in front of the seat where the 3D Digimon / Tamers stand (set by VRSession).</summary>
+    public static Transform Arena { get; set; }
+
+    /// <summary>Rebuilds the 3D Digimon (e.g. after changing their size setting).</summary>
+    public void RefreshModels() => _models?.Clear();
+
+    public VRFieldModels FieldModels => _models;
 
     StatusBadges _badges;
 
@@ -561,7 +577,7 @@ public class Board3D : MonoBehaviour
         quad.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
         quad.transform.localScale = new Vector3(width, height, 1f);
         Renderer renderer = quad.GetComponent<Renderer>();
-        renderer.sharedMaterial = _material;
+        renderer.sharedMaterial = _markerMaterial;
         SetColor(renderer, color);
         return renderer;
     }
@@ -603,7 +619,7 @@ public class Board3D : MonoBehaviour
             _holoBackdrop = new GameObject("HoloBackdrop") { layer = VRRig.Layer };
             _holoBackdrop.transform.SetParent(transform, false);
             Color glow = new Color(0.25f, 0.85f, 1f);
-            HoloPiece(new Vector3(0f, -0.004f, 0f), new Vector3(1.9f, 0.002f, 1.62f), new Color(0.02f, 0.05f, 0.09f));
+            HoloPiece(new Vector3(0f, -0.004f, 0f), new Vector3(1.9f, 0.002f, 1.62f), new Color(0.02f, 0.05f, 0.09f, 0.3f));
             HoloPiece(new Vector3(0f, 0f, 0.81f), new Vector3(1.92f, 0.006f, 0.012f), glow);
             HoloPiece(new Vector3(0f, 0f, -0.81f), new Vector3(1.92f, 0.006f, 0.012f), glow);
             HoloPiece(new Vector3(0.95f, 0f, 0f), new Vector3(0.012f, 0.006f, 1.62f), glow);
@@ -640,7 +656,7 @@ public class Board3D : MonoBehaviour
         piece.transform.SetParent(_holoBackdrop.transform, false);
         piece.transform.localPosition = position;
         piece.transform.localScale = scale;
-        piece.GetComponent<Renderer>().sharedMaterial = VRMaterials.Unlit(color);
+        piece.GetComponent<Renderer>().sharedMaterial = color.a < 1f ? VRMaterials.Transparent(color) : VRMaterials.Unlit(color);
     }
 
     // ---------------------------------------------------------------- layout helpers
@@ -709,6 +725,7 @@ public class Board3D : MonoBehaviour
         }
 
         _seen.Clear();
+        _boardOnly.Clear();
 
         _players[0] = context.You;
         _players[1] = context.Opponent;
@@ -723,6 +740,7 @@ public class Board3D : MonoBehaviour
         }
 
         _badges.BeginFrame();
+        _models.BeginFrame();
 
         foreach (Player player in _players)
         {
@@ -731,7 +749,7 @@ public class Board3D : MonoBehaviour
 
             PlacePile(player.LibraryCards, side * DeckPos, side, false, false);
             PlacePile(player.DigitamaLibraryCards, side * EggDeckPos, side, false, true);
-            PlacePile(player.SecurityCards, side * SecurityPos, side, false, false);
+            PlacePile(player.SecurityCards, side * SecurityPos, side, false, false, honorFaceUp: true); // face-up security shows (and loads) its art
             if (_viewer.IsShowing(player, BoardZone.Trash))
             {
                 _viewer.Layout(player.TrashCards, Get, "TRASH");
@@ -758,6 +776,14 @@ public class Board3D : MonoBehaviour
             else
             {
                 PlaceOpponentHand(player.HandCards, side);
+
+                foreach (CardSource card in player.HandCards)
+                {
+                    if (card != null)
+                    {
+                        _boardOnly.Add(card);
+                    }
+                }
             }
 
             foreach (Permanent permanent in player.GetFieldPermanents())
@@ -773,15 +799,18 @@ public class Board3D : MonoBehaviour
         }
 
         _badges.EndFrame();
+        _models.EndFrame();
 
         foreach (KeyValuePair<CardSource, CardOverride> pair in _overrides)
         {
             CardOverride o = pair.Value;
+            _boardOnly.Remove(pair.Key); // shown in a prompt panel: keep it visible
             Get(pair.Key).SetTarget(o.Position, o.Rotation, true, pair.Key.IsDigiEgg, fastFollow: false, scale: o.Scale, hoverOffset: o.Hover);
         }
 
         _overrides.Clear();
         UpdateGlows(context);
+        ApplyFieldVisibility();
 
         // Cards that left every zone (tokens deleted, etc.)
         _toRemove.Clear();
@@ -824,10 +853,96 @@ public class Board3D : MonoBehaviour
         }
     }
 
+    /// <summary>Duel Disk view with the field hologram off (VR settings): the board keeps running
+    /// (arena models, hand, disk, prompts, viewers) but the cards lying on the field, its frame,
+    /// markers, labels, badges and End Turn button are not drawn.</summary>
+    bool HideField => _duel && !VRSettings.HoloBoard;
+
+    void ApplyFieldVisibility()
+    {
+        bool hide = HideField;
+
+        foreach (KeyValuePair<CardSource, Card3D> pair in _cards)
+        {
+            if (pair.Value != null)
+            {
+                pair.Value.SetHidden(hide && !pair.Value.Held && _boardOnly.Contains(pair.Key));
+            }
+        }
+
+        if (_badges != null)
+        {
+            _badges.Visible = !hide;
+        }
+
+        // Only force things off while hidden (markers are rebuilt when frames change); restore once.
+        if (!hide && !_fieldHidden)
+        {
+            return;
+        }
+
+        bool show = !hide;
+        _fieldHidden = hide;
+
+        if (_holoBackdrop != null)
+        {
+            _holoBackdrop.SetActive(_duel && show);
+        }
+
+        foreach (List<Renderer> side in _slotMarkers)
+        {
+            foreach (Renderer marker in side)
+            {
+                if (marker != null && marker.enabled != show)
+                {
+                    marker.enabled = show;
+                }
+            }
+        }
+
+        foreach (Renderer marker in _pileMarkers.Values)
+        {
+            if (marker != null && marker.enabled != show)
+            {
+                marker.enabled = show;
+            }
+        }
+
+        foreach (Renderer tile in _memoryTiles)
+        {
+            if (tile != null && tile.enabled != show)
+            {
+                tile.enabled = show;
+            }
+        }
+
+        foreach (VRLabel label in _labels.Values)
+        {
+            if (label != null && label.gameObject.activeSelf != show)
+            {
+                label.gameObject.SetActive(show);
+            }
+        }
+
+        if (_memoryToken != null)
+        {
+            foreach (Renderer renderer in _memoryToken.GetComponentsInChildren<Renderer>(true))
+            {
+                renderer.enabled = show;
+            }
+        }
+
+        if (_endButton != null && _endButton.gameObject.activeSelf != show)
+        {
+            _endButton.gameObject.SetActive(show);
+        }
+    }
+
     void HideAll()
     {
         _viewer?.Close();
         _badges?.Clear();
+        _models?.Clear();
         foreach (Card3D card in _cards.Values)
         {
             if (card != null)
@@ -854,7 +969,7 @@ public class Board3D : MonoBehaviour
         return card3D;
     }
 
-    void PlacePile(List<CardSource> cards, Vector3 basePos, Quaternion side, bool faceUp, bool egg)
+    void PlacePile(List<CardSource> cards, Vector3 basePos, Quaternion side, bool faceUp, bool egg, bool honorFaceUp = false)
     {
         for (int i = 0; i < cards.Count; i++)
         {
@@ -864,7 +979,8 @@ public class Board3D : MonoBehaviour
             }
 
             Card3D card = Get(cards[i]);
-            card.SetTarget(basePos + new Vector3(0f, 0.001f + i * PileStep, 0f), side, faceUp, egg);
+            _boardOnly.Add(cards[i]);
+            card.SetTarget(basePos + new Vector3(0f, 0.001f + i * PileStep, 0f), side, faceUp || (honorFaceUp && cards[i].IsFaceUp), egg);
         }
     }
 
@@ -884,6 +1000,12 @@ public class Board3D : MonoBehaviour
 
     readonly List<CardSource> _handShown = new List<CardSource>();
     readonly List<CardSource> _loaded = new List<CardSource>();
+
+    /// <summary>
+    /// Cards you hold (hand, panel, tray) keep their real size whatever the board's
+    /// scale: the board can be shrunk or grown as a desk without the hand following.
+    /// </summary>
+    float HandScale => 1f / Mathf.Max(0.05f, transform.lossyScale.x);
 
     void PlaceYourHand(List<CardSource> allCards)
     {
@@ -933,7 +1055,7 @@ public class Board3D : MonoBehaviour
 
             if (!card.Held)
             {
-                card.SetTarget(transform.InverseTransformPoint(world), Quaternion.Inverse(transform.rotation) * slot.rotation, true, _loaded[i].IsDigiEgg, fastFollow: true);
+                card.SetTarget(transform.InverseTransformPoint(world), Quaternion.Inverse(transform.rotation) * slot.rotation, true, _loaded[i].IsDigiEgg, fastFollow: true, scale: HandScale);
             }
         }
 
@@ -1000,7 +1122,7 @@ public class Board3D : MonoBehaviour
             Quaternion handRotation = tilt * inPlane * faceUser;
 
             Vector3 boardLocal = transform.InverseTransformPoint(HoldingHand.TransformPoint(handLocal));
-            Get(cards[i]).SetTarget(boardLocal, toBoard * handRotation, true, cards[i].IsDigiEgg, fastFollow: true);
+            Get(cards[i]).SetTarget(boardLocal, toBoard * handRotation, true, cards[i].IsDigiEgg, fastFollow: true, scale: HandScale);
         }
     }
 
@@ -1011,8 +1133,9 @@ public class Board3D : MonoBehaviour
         int n = Mathf.Max(1, cards.Count);
         int cols = n <= 6 ? n : Mathf.Min(9, Mathf.CeilToInt(Mathf.Sqrt(n * 1.8f)));
         int rows = Mathf.CeilToInt(n / (float)cols);
-        float cellW = Card3D.Width * PanelCardScale + PanelGapX;
-        float cellH = Card3D.Height * PanelCardScale + PanelGapY;
+        float hs = HandScale;
+        float cellW = (Card3D.Width * PanelCardScale + PanelGapX) * hs;
+        float cellH = (Card3D.Height * PanelCardScale + PanelGapY) * hs;
 
         if (cols != _panelCols || rows != _panelRows)
         {
@@ -1022,18 +1145,18 @@ public class Board3D : MonoBehaviour
 
         // Frame + accent bar + title, with a quick SAO-style "unfold" when opened.
         float unfold = Mathf.SmoothStep(0f, 1f, (Time.unscaledTime - _panelOpenTime) / 0.18f);
-        float frameW = cols * cellW + 0.03f;
-        float frameH = rows * cellH + 0.06f;
+        float frameW = cols * cellW + 0.03f * hs;
+        float frameH = rows * cellH + 0.06f * hs;
         Vector3 frameCenter = _panelPosition + _panelRotation * new Vector3(0f, 0.015f, 0.006f);
         _panelFrame.localPosition = frameCenter;
         _panelFrame.localRotation = _panelRotation;
         _panelFrame.localScale = new Vector3(frameW, frameH * unfold, 0.004f);
         _panelAccent.localPosition = _panelPosition + _panelRotation * new Vector3(0f, 0.015f + frameH * 0.5f * unfold, 0.004f);
         _panelAccent.localRotation = _panelRotation;
-        _panelAccent.localScale = new Vector3(frameW, 0.006f, 0.006f);
-        _panelTitle.transform.localPosition = _panelPosition + _panelRotation * new Vector3(0.02f, 0.015f + frameH * 0.5f * unfold - 0.022f, -0.002f);
+        _panelAccent.localScale = new Vector3(frameW, 0.006f * hs, 0.006f);
+        _panelTitle.transform.localPosition = _panelPosition + _panelRotation * new Vector3(0.02f * hs, 0.015f + frameH * 0.5f * unfold - 0.022f * hs, -0.002f);
         _panelTitle.transform.localRotation = _panelRotation;
-        _panelTitle.Size = new Vector2(Mathf.Round((frameW - 0.04f) * 50f) / 50f, 0.035f);
+        _panelTitle.Size = new Vector2(Mathf.Round((frameW - 0.04f * hs) * 50f) / 50f, Mathf.Round(0.035f * hs * 200f) / 200f);
         string title = "HAND  " + cards.Count;
 
         if (_panelTitle.text != title)
@@ -1058,7 +1181,7 @@ public class Board3D : MonoBehaviour
             float x = (col - (inRow - 1) * 0.5f) * cellW;
             float y = ((rows - 1) * 0.5f - row) * cellH * unfold;
             Vector3 position = _panelPosition + _panelRotation * new Vector3(x, y, 0f);
-            Get(cards[i]).SetTarget(position, faceUser, true, cards[i].IsDigiEgg, fastFollow: false, scale: PanelCardScale, hoverOffset: hover);
+            Get(cards[i]).SetTarget(position, faceUser, true, cards[i].IsDigiEgg, fastFollow: false, scale: PanelCardScale * hs, hoverOffset: hover * hs);
         }
     }
 
@@ -1091,6 +1214,7 @@ public class Board3D : MonoBehaviour
             // Stack viewer: detail panel (stack effects left, applied effects + big card right).
             _viewer.LayoutStack(permanent, Get);
             _badges.Hide(permanent);
+            _models.Hide(permanent);
             return;
         }
 
@@ -1135,11 +1259,15 @@ public class Board3D : MonoBehaviour
             }
 
             Vector3 position = slot + rotation * offset + new Vector3(0f, height, 0f);
+            _boardOnly.Add(card);
             Get(card).SetTarget(position, card == top ? topRotation : rotation, card.IsFaceUp, card.IsDigiEgg);
         }
 
         // DP / BLOCKER / CAN'T ATTACK / CAN'T SUSPEND badges on the top card.
         _badges.Place(permanent, slot + new Vector3(0f, 0.002f + n * StackStep, 0f));
+
+        // 3D Digimon standing on the card (player's own model folder, optional).
+        _models.Place(permanent, slot, player.isYou, permanent.IsSuspended);
     }
 
     Renderer SlotMarker(int side, int frameId) =>
@@ -1365,10 +1493,33 @@ public class Board3D : MonoBehaviour
             return;
         }
 
-        // Cards already close to your face (hand fan, panels): show the zoom a bit further up.
-        float lift = toCard.magnitude < 0.7f ? 0.2f : 0.14f;
-        Vector3 direction = toCard.normalized;
-        Vector3 target = Head.position + direction * PreviewDistance + Vector3.up * lift;
+        Vector3 target;
+        VRArenaTarget arena = VRArenaTarget.Hovered;
+
+        if (arena != null)
+        {
+            // Pointing into the arena (the desk card is hidden / far): zoom at eye height, towards what
+            // you point at, a little to the left so it does not cover the figure.
+            Vector3 flat = arena.transform.position - Head.position;
+            flat.y = 0f;
+
+            if (flat.sqrMagnitude < 1e-4f)
+            {
+                flat = Head.forward;
+                flat.y = 0f;
+            }
+
+            flat = flat.sqrMagnitude > 1e-6f ? flat.normalized : Vector3.forward;
+            Vector3 right = Vector3.Cross(Vector3.up, flat);
+            target = Head.position + flat * PreviewDistance - right * 0.22f + Vector3.down * 0.03f;
+        }
+        else
+        {
+            // Cards already close to your face (hand fan, panels): show the zoom a bit further up.
+            float lift = toCard.magnitude < 0.7f ? 0.2f : 0.14f;
+            target = Head.position + toCard.normalized * PreviewDistance + Vector3.up * lift;
+        }
+
         Quaternion rotation = Quaternion.LookRotation(target - Head.position, Vector3.up);
 
         Transform t = _preview.transform;
@@ -1437,6 +1588,13 @@ public class Board3D : MonoBehaviour
 
                     case LegalPlayKind.Digivolve:
                         AddTarget(SlotWorldLocal(you, play.Frame.FrameID), 0.075f, () => GameActions.Play(captured), SlotMarker(0, play.Frame.FrameID), DigivolveColor);
+
+                        // Onto your breeding Digimon: its hologram beside the disk is a drop zone too.
+                        if (!play.Frame.IsBattleAreaFrame() && VRBreedingDisplay.YourAnchor != null)
+                        {
+                            AddWorldTarget(VRBreedingDisplay.YourAnchor, 0.13f, () => GameActions.Play(captured), VRBreedingDisplay.YourDisc, DigivolveColor, VRBreedingDisplay.YourDiscColor);
+                        }
+
                         break;
 
                     case LegalPlayKind.Option:
@@ -1813,7 +1971,9 @@ public class Board3D : MonoBehaviour
     /// "Attack" (if it can) and its effects. Returns false if it has no effect to offer
     /// (then the card is simply grabbed to attack, as before).
     /// </summary>
-    public bool TryOpenPermanentMenu(Card3D card)
+    /// <param name="withAttack">From the arena (no dragging there): also open the menu when
+    /// the only thing it can do is attack.</param>
+    public bool TryOpenPermanentMenu(Card3D card, bool withAttack = false)
     {
         GameContext context = BoardObserver.Context;
         LegalActionSet set = LegalActions.Current;
@@ -1831,15 +1991,15 @@ public class Board3D : MonoBehaviour
         }
 
         List<LegalSkill> skills = set.Skills.FindAll(s => s.Permanent == permanent);
+        List<LegalAttack> attacks = new List<LegalAttack>(set.AttacksFor(permanent));
 
-        if (skills.Count == 0)
+        if (skills.Count == 0 && (!withAttack || attacks.Count == 0))
         {
             return false;
         }
 
         CancelPending();
         _menuOptions.Clear();
-        List<LegalAttack> attacks = new List<LegalAttack>(set.AttacksFor(permanent));
 
         if (attacks.Count > 0)
         {
@@ -1867,6 +2027,80 @@ public class Board3D : MonoBehaviour
         public CardSource Card;      // a specific card (e.g. a linked card for App Fusion)
         public bool Security;
         public Func<bool> Action;
+    }
+
+    /// <summary>The desk card for a card (null if it is not on the desk).</summary>
+    public Card3D FindCard(CardSource card) => card != null && _cards.TryGetValue(card, out Card3D card3D) ? card3D : null;
+
+    /// <summary>The desk card that stands for a figure in the arena: the permanent's top card,
+    /// or for the opponent in person one of their security cards (= attack the player).</summary>
+    public Card3D CardForArena(VRArenaTarget target)
+    {
+        GameContext context = BoardObserver.Context;
+
+        if (target == null || context == null)
+        {
+            return null;
+        }
+
+        if (target.OpponentPlayer)
+        {
+            if (context.Opponent == null)
+            {
+                return null;
+            }
+
+            foreach (CardSource security in context.Opponent.SecurityCards)
+            {
+                Card3D card = FindCard(security);
+
+                if (card != null)
+                {
+                    return card;
+                }
+            }
+
+            return null;
+        }
+
+        return target.Permanent != null ? FindCard(target.Permanent.TopCard) : null;
+    }
+
+    /// <summary>Glow of an arena figure: target of the current pointing choice (attack...),
+    /// else the outline the game shows for it (selectable by an effect).</summary>
+    public Color? ArenaGlow(Permanent permanent)
+    {
+        if (permanent == null)
+        {
+            return null;
+        }
+
+        foreach (TargetOption option in _choice)
+        {
+            if (option.Permanent == permanent || (option.Card != null && permanent.cardSources.Contains(option.Card)))
+            {
+                return _choiceColor;
+            }
+        }
+
+        return permanent.TopCard != null ? VRPromptBridge.OutlineColor(permanent.TopCard, BoardObserver.Context) : null;
+    }
+
+    /// <summary>True while the opponent player (their security) can be picked as the attack target.</summary>
+    public bool OpponentIsTarget
+    {
+        get
+        {
+            foreach (TargetOption option in _choice)
+            {
+                if (option.Security)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
     }
 
     /// <summary>Glow for cards that are targets of the current pointing choice (App Fusion linked cards).</summary>
@@ -2004,6 +2238,27 @@ public class Board3D : MonoBehaviour
     }
 
     /// <summary>The player pointed (laser + trigger): run the matching target, or cancel.</summary>
+    /// <summary>Attack-target choice: pick "the player / her security" directly (laser on her shields or
+    /// on her). False when attacking the player is not one of the options.</summary>
+    public bool ResolveSecurityTarget()
+    {
+        foreach (TargetOption option in _choice)
+        {
+            if (option.Security)
+            {
+                TargetOption chosen = option;
+                ClearTargetChoice();
+                chosen.Action();
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>The short message currently flashed (e.g. "Cancelled"), or null.</summary>
+    public string FlashMessage => !string.IsNullOrEmpty(_flash) && Time.unscaledTime < _flashUntil ? _flash : null;
+
     public void ResolveTargetChoice(Card3D pointed)
     {
         GameContext context = BoardObserver.Context;

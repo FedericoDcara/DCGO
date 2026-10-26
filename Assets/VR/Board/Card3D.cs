@@ -124,6 +124,55 @@ public class Card3D : MonoBehaviour
         transform.localScale = new Vector3(scale, scale, scale);
     }
 
+    /// <summary>Copies this card's loaded front image onto another renderer (e.g. the disk security
+    /// hologram). False while the front has not loaded.</summary>
+    public bool CopyFrontTo(Renderer target)
+    {
+        if (target == null || _front == null || !_front.HasPropertyBlock())
+        {
+            return false;
+        }
+
+        _front.GetPropertyBlock(_block);
+        Texture texture = _block.GetTexture(BaseMap);
+
+        if (texture == null)
+        {
+            return false;
+        }
+
+        MaterialPropertyBlock copy = new MaterialPropertyBlock();
+        copy.SetTexture(BaseMap, texture);
+        copy.SetTexture(MainTex, texture);
+        copy.SetVector(BaseMapST, _block.GetVector(BaseMapST));
+        copy.SetVector(MainTexST, _block.GetVector(MainTexST));
+        target.SetPropertyBlock(copy);
+        return true;
+    }
+
+    bool _hidden;
+
+    /// <summary>Stops drawing the card (and its laser collider) while it keeps following its
+    /// target, e.g. cards lying on the field when the field hologram is turned off.</summary>
+    public void SetHidden(bool hidden)
+    {
+        if (_hidden == hidden)
+        {
+            return;
+        }
+
+        _hidden = hidden;
+        _front.enabled = !hidden;
+        _back.enabled = !hidden;
+        _glow.enabled = !hidden;
+        Collider collider = GetComponent<Collider>();
+
+        if (collider != null)
+        {
+            collider.enabled = !hidden;
+        }
+    }
+
     /// <summary>Shows a coloured frame around the card (null hides it).</summary>
     public void SetGlow(Color? color)
     {

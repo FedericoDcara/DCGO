@@ -27,9 +27,16 @@ public class VRSession : MonoBehaviour
     public VRDuelDisk DuelDisk { get; private set; }
     public VRPromptPanel Prompt { get; private set; }
     public VRSettingsPanel Settings { get; private set; }
+
+    public VRAvatarCams AvatarCams { get; private set; }
     public VRKeyboard Keyboard { get; private set; }
     public VRMenu Menu { get; private set; }
     public VRPerf Perf { get; private set; }
+
+    // The flat game screen only appears in menus when the VR menu has had no page for this long:
+    // scene loads / page switches leave short gaps that used to flash the flat view.
+    const float FlatScreenDelay = 1.0f;
+    float _noPageSince = -1f;
 
     void Update()
     {
@@ -38,14 +45,37 @@ public class VRSession : MonoBehaviour
             return;
         }
 
+        VRPerformance.Enforce(); // the game re-applies its 60 fps cap on scene loads
+
         // Optionally hide the side screen during a duel (everything is in VR); always show it in menus.
         // The battle scene loads on top of the menu scene; from that moment on it is a duel
         // (opponent intro, first player, mulligan prompts appear on the game screen).
         bool inDuel = (BoardObserver.Context != null && BoardObserver.Context.You != null) || GManager.instance != null;
         Rig.SetMenuLayout(!inDuel);
-        Menu.SetVisible(!inDuel);
+        Menu.SetVisible(!inDuel && !VRModelStudio.Active);
         // In menus the native VR menu replaces the flat screen whenever it has a page for it.
-        bool screenVisible = inDuel ? !(VRSettings.HideScreenInDuel && Rig.DuelMode) : !Menu.ShowsPage;
+        bool screenVisible;
+
+        if (inDuel)
+        {
+            screenVisible = !(VRSettings.HideScreenInDuel && Rig.DuelMode);
+            _noPageSince = -1f;
+        }
+        else if (Menu.ShowsPage || VRModelStudio.Active)
+        {
+            screenVisible = false;
+            _noPageSince = -1f;
+        }
+        else
+        {
+            if (_noPageSince < 0f)
+            {
+                _noPageSince = Time.unscaledTime;
+            }
+
+            screenVisible = Time.unscaledTime - _noPageSince > FlatScreenDelay;
+        }
+
         Rig.SetScreenVisible(screenVisible);
         GameScreen.Paused = !screenVisible;
     }
@@ -127,24 +157,34 @@ public class VRSession : MonoBehaviour
 
         GameScreen = gameObject.AddComponent<VRGameScreen>();
         Rig = VRRig.Create(transform, GameScreen.Texture);
+        Rig.SetScreenVisible(false); // shown later only if a menu has no VR page (see FlatScreenDelay)
         GameScreen.Init(Rig.Camera);
 
         Pointer = gameObject.AddComponent<VRLaserPointer>();
         Pointer.Init(Rig, GameScreen);
         PointerInput.Provider = Pointer;
 
+        Board3D.Arena = Rig.ArenaAnchor;
         Board = Board3D.Create(Rig.TableTop);
         Board.HoldingHand = Rig.LeftHand;
         Board.Head = Rig.Camera.transform;
         DuelDisk = VRDuelDisk.Create(Rig.LeftHand, Board);
         Board.Disk = DuelDisk;
         DuelDisk.PushHand = Rig.RightHand;
+        VRDiskSecurity.Create(transform);
         Prompt = VRPromptPanel.Create(Board);
+        VRAttention.Create(transform, Board, Rig.Camera.transform);
         Board.HandHeld = !VRSettings.HandFloating;
         Settings = VRSettingsPanel.Create(transform, Rig, Board);
         Keyboard = VRKeyboard.Create(transform, Rig);
         Menu = VRMenu.Create(transform, Rig);
         VRPhaseBar.Create(transform, Board, Rig.Camera.transform);
+        VRMemoryHud.Create(transform, Rig.Camera.transform);
+        VROpponentAvatar.Create(transform, Rig.ArenaAnchor, Rig.Camera.transform);
+        VRSecurityBattle.Create(transform, Rig.Camera.transform);
+        VRArenaOptions.Create(transform, Rig.ArenaAnchor);
+        VRBreedingDisplay.Create(transform, Rig.ArenaAnchor);
+        AvatarCams = VRAvatarCams.Create(transform);
         Perf = VRPerf.Create(transform, Rig);
         VRPerf.ApplyRenderScale();
         Rig.ViewChanged += ApplyView;
@@ -154,6 +194,7 @@ public class VRSession : MonoBehaviour
         Grabber.Init(Rig, Pointer, Board);
 
         _active = true;
+        VRPerformance.Apply(Rig.Camera); // no 60 fps cap, quiet logs, lightweight VR camera
         Debug.Log("[DCGO VR] VR session started with loader: " + manager.activeLoader.name);
         StartCoroutine(LogControllers());
         StartCoroutine(ReconnectWatchdog(manager));

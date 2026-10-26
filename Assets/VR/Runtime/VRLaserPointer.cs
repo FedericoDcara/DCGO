@@ -15,7 +15,7 @@ using UnityEngine.XR;
 [DefaultExecutionOrder(-29000)]
 public class VRLaserPointer : MonoBehaviour, PointerInput.IProvider
 {
-    const float MaxDistance = 6f;
+    const float MaxDistance = 30f; // far enough to reach the arena and the opponent in person
     const float ScrollSpeed = 6f;
     const float SmoothingRate = 30f;
 
@@ -43,6 +43,7 @@ public class VRLaserPointer : MonoBehaviour, PointerInput.IProvider
     public Ray CurrentRay { get; private set; }
     public bool HasHit { get; private set; }
     public RaycastHit CurrentHit { get; private set; }
+    readonly RaycastHit[] _rayHits = new RaycastHit[24];
 
     /// <summary>Set while a 3D card is held so the laser can't also click the screen.</summary>
     public bool BlockScreenInput { get; set; }
@@ -125,6 +126,31 @@ public class VRLaserPointer : MonoBehaviour, PointerInput.IProvider
         // Raycast against the game screen.
         Ray ray = _rig.PointerRay(_activeHand);
         bool hitAny = Physics.Raycast(ray, out RaycastHit hit, MaxDistance, 1 << VRRig.Layer, QueryTriggerInteraction.Collide);
+
+        // An arena figure in front must not block a priority target further along the ray
+        // (the opponent's shields: attack the player over her Digimon).
+        if (hitAny && hit.collider != _rig.ScreenCollider)
+        {
+            VRArenaTarget first = hit.collider.GetComponentInParent<VRArenaTarget>();
+
+            if (first != null && !first.Priority)
+            {
+                int count = Physics.RaycastNonAlloc(ray, _rayHits, MaxDistance, 1 << VRRig.Layer, QueryTriggerInteraction.Collide);
+                float best = float.MaxValue;
+
+                for (int i = 0; i < count; i++)
+                {
+                    VRArenaTarget target = _rayHits[i].collider != null ? _rayHits[i].collider.GetComponentInParent<VRArenaTarget>() : null;
+
+                    if (target != null && target.Priority && _rayHits[i].distance < best)
+                    {
+                        best = _rayHits[i].distance;
+                        hit = _rayHits[i];
+                    }
+                }
+            }
+        }
+
         bool hitScreen = hitAny && hit.collider == _rig.ScreenCollider;
         CurrentRay = ray;
         HasHit = hitAny;
