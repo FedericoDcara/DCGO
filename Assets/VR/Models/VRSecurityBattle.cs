@@ -50,6 +50,10 @@ public class VRSecurityBattle : MonoBehaviour
         public int AttackerDp;
     }
 
+    /// <summary>A security card of this player was just broken (a security check hit them).</summary>
+    public static event Action<Player> SecurityHit;
+
+    readonly HashSet<CardSource> _announced = new HashSet<CardSource>();
     readonly Queue<Pending> _queue = new Queue<Pending>();
     readonly HashSet<CardSource> _queued = new HashSet<CardSource>();
 
@@ -114,10 +118,13 @@ public class VRSecurityBattle : MonoBehaviour
 
         // Keep watching while a scene plays: Security +1 / +2 break more cards during it,
         // those wait in a queue and play one after the other.
-        if (VRSettings.SecurityBattle)
+        // Always watch (characters react even with the battle scene off).
+        DetectReveal(context, context.You);
+        DetectReveal(context, context.Opponent);
+
+        if (!checkingNow)
         {
-            DetectReveal(context, context.You);
-            DetectReveal(context, context.Opponent);
+            _announced.Clear();
         }
 
         if (!_running && _queue.Count > 0)
@@ -216,9 +223,15 @@ public class VRSecurityBattle : MonoBehaviour
             return;
         }
 
-        if (revealed == _revealed || _queued.Contains(revealed))
+        // Tell the characters right away (once per card): the owner's avatar flinches.
+        if (_announced.Add(revealed))
         {
-            return; // already playing / waiting
+            SecurityHit?.Invoke(owner);
+        }
+
+        if (!VRSettings.SecurityBattle || revealed == _revealed || _queued.Contains(revealed))
+        {
+            return; // scene off, or already playing / waiting
         }
 
         _queued.Add(revealed);
@@ -611,7 +624,7 @@ public class VRSecurityBattle : MonoBehaviour
 
         fighter.Fainted = true;
 
-        if (!Play(fighter, "_bf01", false))
+        if (!Play(fighter, VRFieldModels.KnockDown, false))
         {
             // No faint clip: tip over.
             fighter.Body.localRotation = Quaternion.Euler(-80f, 0f, 0f);
@@ -632,7 +645,7 @@ public class VRSecurityBattle : MonoBehaviour
             return false;
         }
 
-        fighter.Anim[clip.name].wrapMode = suffix == "_bf01" ? WrapMode.ClampForever : WrapMode.Once;
+        fighter.Anim[clip.name].wrapMode = suffix == VRFieldModels.KnockDown ? WrapMode.ClampForever : WrapMode.Once;
         fighter.Anim.Stop();
         fighter.Anim.Play(clip.name);
 

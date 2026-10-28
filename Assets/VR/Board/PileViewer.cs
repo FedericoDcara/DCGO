@@ -312,7 +312,7 @@ public class PileViewer
                 {
                     float parkY = bodyTop - (Mathf.Clamp(slot, 0f, visible - 1) * (RowH + RowGap) + RowH * 0.5f) * s * unfold;
                     Vector3 park = _position + _rotation * new Vector3(listLeft + (rowW + 0.005f + thumbW * 0.5f) * s, parkY, 0.03f * s);
-                    get(card).SetTarget(park, faceUser, !card.IsFlipped, card.IsDigiEgg, fastFollow: false, scale: ThumbScale * 0.5f * s, hoverOffset: hover);
+                    get(card).SetTarget(park, faceUser, VRCompat.CanSee(card), card.IsDigiEgg, fastFollow: false, scale: ThumbScale * 0.5f * s, hoverOffset: hover);
                 }
 
                 if (texts)
@@ -338,7 +338,7 @@ public class PileViewer
             if (card != null)
             {
                 Vector3 thumb = _position + _rotation * new Vector3(listLeft + (rowW + 0.005f + thumbW * 0.5f) * s, y, 0f);
-                get(card).SetTarget(thumb, faceUser, !card.IsFlipped, card.IsDigiEgg, fastFollow: false, scale: ThumbScale * s, hoverOffset: hover);
+                get(card).SetTarget(thumb, faceUser, VRCompat.CanSee(card), card.IsDigiEgg, fastFollow: false, scale: ThumbScale * s, hoverOffset: hover);
             }
         }
 
@@ -391,7 +391,7 @@ public class PileViewer
         {
             float bigY = bodyTop - (StatusH + 0.045f + Card3D.Height * BigScale * 0.5f) * s * unfold;
             Vector3 big = _position + _rotation * new Vector3(rightX, bigY, 0f);
-            get(permanent.TopCard).SetTarget(big, faceUser, !permanent.TopCard.IsFlipped, permanent.TopCard.IsDigiEgg, fastFollow: false, scale: BigScale * s, hoverOffset: hover);
+            get(permanent.TopCard).SetTarget(big, faceUser, VRCompat.CanSee(permanent.TopCard), permanent.TopCard.IsDigiEgg, fastFollow: false, scale: BigScale * s, hoverOffset: hover);
         }
     }
 
@@ -409,7 +409,7 @@ public class PileViewer
 
     static void StyleRow(VRLabel row, CardSource card, Permanent permanent)
     {
-        if (card == null || card.IsFlipped)
+        if (card == null || !VRCompat.CanSee(card))
         {
             row.text = "???";
             row.plateColor = VRLabel.DefaultPlate;
@@ -431,6 +431,12 @@ public class PileViewer
         }
 
         row.text = string.IsNullOrWhiteSpace(effect) ? "<i>" + CardName(card) + " - no inherited effect</i>" : effect.Trim();
+
+        if (card.IsFlipped)
+        {
+            // Your own face-down card: you can look, the opponent can't (and its effect is off).
+            row.text = "<color=#9FB4D0><b>[FACE DOWN - only you see it]</b></color> " + row.text;
+        }
 
         Color plate = VRLabel.DefaultPlate;
         Color text = Color.white;

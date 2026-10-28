@@ -132,6 +132,19 @@ public static class VRCelShading
                 _liteBase = Resources.Load<Material>("DSTS/DSTS_MobileToonBase");
                 _liteBaseMissing = _liteBase == null;
 
+                if (_liteBase != null)
+                {
+                    // A shader that did not make it into the build draws pink: fall back to the
+                    // (always included) URP Unlit materials from VRModelMaterials instead.
+                    Debug.Log($"[DCGO VR] Toon material: {_liteBase.shader.name}, supported {_liteBase.shader.isSupported}");
+
+                    if (!_liteBase.shader.isSupported)
+                    {
+                        _liteBase = null;
+                        _liteBaseMissing = true;
+                    }
+                }
+
                 if (_liteBaseMissing)
                 {
                     Debug.LogWarning("[DCGO VR] Resources/DSTS/DSTS_MobileToonBase missing: keeping glTFast materials.");
@@ -241,9 +254,17 @@ public static class VRCelShading
 
                 Material lite = new Material(liteBase) { name = source.name + " (DSTS lite)" };
 
+                // Source is either a glTFast shader-graph material ("baseColorTexture") or a
+                // VRModelMaterials URP Unlit one ("_BaseMap"), which is what loads now.
                 if (source.HasProperty("baseColorTexture"))
                 {
                     lite.SetTexture("_BaseMap", source.GetTexture("baseColorTexture"));
+                }
+                else if (source.HasProperty("_BaseMap"))
+                {
+                    lite.SetTexture("_BaseMap", source.GetTexture("_BaseMap"));
+                    lite.SetTextureScale("_BaseMap", source.GetTextureScale("_BaseMap"));
+                    lite.SetTextureOffset("_BaseMap", source.GetTextureOffset("_BaseMap"));
                 }
 
                 if (source.HasProperty("baseColorTexture_ST"))
@@ -260,6 +281,10 @@ public static class VRCelShading
                 if (source.HasProperty("baseColorFactor"))
                 {
                     lite.SetColor("_BaseColor", source.GetColor("baseColorFactor"));
+                }
+                else if (source.HasProperty("_BaseColor"))
+                {
+                    lite.SetColor("_BaseColor", source.GetColor("_BaseColor"));
                 }
 
                 bool doubleSided = DSTSGlbJson.Bool(gltf, "doubleSided") || DSTSGlbJson.Str(render, "cull") == "none";
@@ -296,6 +321,7 @@ public static class VRCelShading
         }
 
         material.SetFloat("alphaCutoff", cutoff);
+        material.SetFloat("_Cutoff", cutoff); // URP Unlit (VRModelMaterials)
         material.SetFloat("_AlphaClip", 1f);
         material.EnableKeyword("_ALPHATEST_ON");
         material.SetOverrideTag("RenderType", "TransparentCutout");

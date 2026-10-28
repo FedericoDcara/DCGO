@@ -596,6 +596,17 @@ public partial class VRMenu
             return false;
         }
 
+        // The VR editor (card wall, thousands of pool cards) costs too many frames:
+        // the flat editor is used instead. The page is still reported, without
+        // building anything, so dialogs and test draw opened from it stack on top.
+        if (!EditorInVR)
+        {
+            _editorFilters = false;
+            spec.Page = Page.Editor;
+            spec.Key = "Editor:flat";
+            return true;
+        }
+
         DeckData deck = editor.EdittingDeckData;
         spec.Page = Page.Editor;
         spec.Key = _editorFilters ? "Editor:filters" : "Editor";

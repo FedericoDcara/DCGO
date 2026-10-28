@@ -9,6 +9,11 @@ using System.Reflection;
 // when they are missing, a plain fallback is used.
 public static class VRCompat
 {
+    /// <summary>Whether you may see this card's face on the field (stacks under Digimon / Tamers):
+    /// face-up cards, and your own face-down cards (the flat detail panel shows them to their
+    /// owner too, see CardInfo). The opponent's face-down cards stay hidden.</summary>
+    public static bool CanSee(CardSource card) => card != null && (!card.IsFlipped || (card.Owner != null && card.Owner.isYou));
+
     static bool _resolved;
     static FieldInfo _replayField;
     static PropertyInfo _replayProperty;

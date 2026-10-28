@@ -297,6 +297,11 @@ public class VRGrabber : MonoBehaviour
             button.Press();
             VRLaserPointer.Haptic(_laser.ActiveHand, 0.4f, 0.04f);
         }
+        else if (!_board.HasTargetChoice && PointsAtOpponentPlayer(arena, pointed) && VRPromptBridge.TryClickOpponentSecurity())
+        {
+            // An effect's attack prompt: the opponent in person (or their security) = attack the player.
+            VRLaserPointer.Haptic(_laser.ActiveHand, 0.5f, 0.05f);
+        }
         else if (arena != null && arena.OpponentPlayer && !_board.HasTargetChoice)
         {
             _board.Flash("Point at one of your Digimon, choose Attack, then point here");
@@ -348,6 +353,18 @@ public class VRGrabber : MonoBehaviour
         {
             TryGrab(pointed, _laser.ActiveHand, physically: false);
         }
+    }
+
+    // The opponent avatar in the arena, or one of their security cards on the desk.
+    static bool PointsAtOpponentPlayer(VRArenaTarget arena, Card3D pointed)
+    {
+        if (arena != null && arena.OpponentPlayer)
+        {
+            return true;
+        }
+
+        GameContext context = BoardObserver.Context;
+        return pointed != null && context != null && context.Opponent != null && context.Opponent.SecurityCards.Contains(pointed.Card);
     }
 
     // ---------------------------------------------------------------- grab the world

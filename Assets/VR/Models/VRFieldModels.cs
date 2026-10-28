@@ -41,7 +41,12 @@ public class VRFieldModels
     /// <summary>Reference floor for the opponent's podium + avatar (kept at the old tier height when the tier was lowered).</summary>
     public const float PodiumFloor = 1.0f;
     const float RowStep = 0.6f;            // second row when an arc is crowded (outwards)
-    public const float TheirBoost = 1.45f;        // opponent figures drawn bigger: they are farther away
+    public const float TheirBoost = 1.45f;
+
+    // Digimon clip names (chrXXX_...): ba01/ba02 attack, bd01 hit, bd02 knock down,
+    // bd03 get up, bg01 block, bg02 dodge, bn01 idle, bn02 idle (low HP), bv01 victory.
+    // bf01 is a field action, NOT a faint.
+    public const string KnockDown = "_bd02";        // opponent figures drawn bigger: they are farther away
 
     static readonly Color YourColor = new Color(0.25f, 0.8f, 1f);
     static readonly Color TheirColor = new Color(1f, 0.35f, 0.3f);
@@ -68,6 +73,8 @@ public class VRFieldModels
         public Renderer Glow;       // coloured frame around the card
         public BoxCollider Hit;     // laser target (VRArenaTarget)
         public float FigureHeight = 1f; // figure height at body scale 1
+        public Transform Aura;      // effect-activated circle + aura column
+        public float AuraLevel;
         public Renderer Pillar;
         public Animation Anim;
         public string Idle;
@@ -303,11 +310,52 @@ public class VRFieldModels
                 group.localPosition = Vector3.zero;
             }
             UpdateTarget(entry, padSize * boost);
+            UpdateAura(entry, padSize * boost);
             UpdateLunge(entry);
             UpdatePillar(entry, age);
             KeepIdle(entry);
             UpdatePlates(entry, padSize * boost);
         }
+    }
+
+    // While one of this figure's effects resolves, the game lights its flat card
+    // (FieldPermanentCard.UsingSkillEffect): the figure gets a glowing circle + aura.
+    void UpdateAura(Entry entry, float padScale)
+    {
+        bool active = false;
+
+        try
+        {
+            FieldPermanentCard card = entry.Permanent.ShowingPermanentCard;
+            active = card != null && card.UsingSkillEffect != null && card.UsingSkillEffect.activeSelf;
+        }
+        catch (Exception)
+        {
+            active = false;
+        }
+
+        float before = entry.AuraLevel;
+        entry.AuraLevel = Mathf.MoveTowards(entry.AuraLevel, active ? 1f : 0f, Time.unscaledDeltaTime / (active ? 0.3f : 0.5f));
+
+        if (entry.AuraLevel <= 0f && entry.Aura == null)
+        {
+            return;
+        }
+
+        if (entry.Aura == null)
+        {
+            entry.Aura = VRAura.Create(entry.Root);
+        }
+
+        if (before <= 0f && entry.AuraLevel > 0f)
+        {
+            Debug.Log("[DCGO VR] Effect aura: " + LegalActions.Name(entry.Top));
+        }
+
+        float scale = entry.Body.localScale.x;
+        float radius = Mathf.Max(0.32f * padScale, entry.Width * scale * 0.6f, 0.3f);
+        float height = Mathf.Max(0.8f, entry.FigureHeight * scale * 1.25f);
+        VRAura.Apply(entry.Aura, entry.AuraLevel, radius, height);
     }
 
     static Material _hoverGlow;
@@ -527,6 +575,7 @@ public class VRFieldModels
 
     public void EndFrame()
     {
+        PreloadHand();
         _gone.Clear();
 
         foreach (KeyValuePair<Permanent, Entry> pair in _entries)
@@ -545,7 +594,7 @@ public class VRFieldModels
             if (entry.Root != null && Enabled)
             {
                 entry.DyingSince = Time.unscaledTime;
-                Play(entry, "_bf01", false);
+                Play(entry, KnockDown, false); // falls and stays down while it fades
                 _dying.Add(entry);
             }
             else
@@ -1185,11 +1234,31 @@ public class VRFieldModels
 
     // ---------------------------------------------------------------- loading / releasing
 
+    static TimeBudgetPerFrameDeferAgent _deferAgent;
+
+    // glTFast spreads a load over several frames when it has a time budget; without one it
+    // does all the work in one go (a visible freeze). About 3 ms of loading per frame.
+    static void EnsureDeferAgent()
+    {
+        if (_deferAgent != null)
+        {
+            return;
+        }
+
+        GameObject go = new GameObject("DCGO_VR_ModelLoader");
+        UnityEngine.Object.DontDestroyOnLoad(go);
+        _deferAgent = go.AddComponent<TimeBudgetPerFrameDeferAgent>();
+        _deferAgent.SetFrameBudget(0.09f); // fraction of a 30 fps frame (the game runs uncapped) = 3 ms
+        GltfImport.SetDefaultDeferAgent(_deferAgent);
+    }
+
     static async Task<Loaded> LoadFile(string path)
     {
+        EnsureDeferAgent();
+
         if (!_files.TryGetValue(path, out Loaded file))
         {
-            file = new Loaded { Import = new GltfImport() };
+            file = new Loaded { Import = new GltfImport(materialGenerator: VRModelMaterials.Instance) }; // URP Unlit: always in builds
             ImportSettings settings = new ImportSettings
             {
                 AnimationMethod = AnimationMethod.Legacy,
@@ -1236,6 +1305,59 @@ public class VRFieldModels
         entry.Model = null;
         entry.Anim = null;
         entry.DpLabel = null;
+    }
+
+    // Loading a .glb takes a big chunk of a frame (parsing + texture upload): done when the
+    // Digimon is played, it froze the game for 0.1-0.4 s. Instead the models of the Digimon
+    // in your hand load in the background, one at a time, and stay ready while in hand.
+    float _nextPreload;
+    Task<Loaded> _preloading;
+
+    void PreloadHand()
+    {
+        if (!Enabled || Time.unscaledTime < _nextPreload || (_preloading != null && !_preloading.IsCompleted))
+        {
+            return;
+        }
+
+        _nextPreload = Time.unscaledTime + 1f;
+        GameContext context = BoardObserver.Context;
+
+        if (context == null || context.You == null)
+        {
+            return;
+        }
+
+        foreach (CardSource card in context.You.HandCards)
+        {
+            bool digimon;
+
+            try
+            {
+                digimon = card != null && card.IsDigimon;
+            }
+            catch (Exception)
+            {
+                digimon = false;
+            }
+
+            string path = digimon ? VRModelLibrary.Resolve(card) : null;
+
+            if (path == null)
+            {
+                continue;
+            }
+
+            if (_files.TryGetValue(path, out Loaded loaded))
+            {
+                loaded.LastUsed = Time.unscaledTime; // keep it while the card is in hand
+                continue;
+            }
+
+            Debug.Log("[DCGO VR] Preloading model for " + LegalActions.Name(card));
+            _preloading = LoadFile(path);
+            return; // one per second at most
+        }
     }
 
     static float _nextReleaseCheck;

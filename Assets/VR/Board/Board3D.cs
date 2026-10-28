@@ -1260,7 +1260,7 @@ public class Board3D : MonoBehaviour
 
             Vector3 position = slot + rotation * offset + new Vector3(0f, height, 0f);
             _boardOnly.Add(card);
-            Get(card).SetTarget(position, card == top ? topRotation : rotation, card.IsFaceUp, card.IsDigiEgg);
+            Get(card).SetTarget(position, card == top ? topRotation : rotation, VRCompat.CanSee(card), card.IsDigiEgg);
         }
 
         // DP / BLOCKER / CAN'T ATTACK / CAN'T SUSPEND badges on the top card.

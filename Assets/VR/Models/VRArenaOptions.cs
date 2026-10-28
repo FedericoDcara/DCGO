@@ -128,11 +128,24 @@ public class VRArenaOptions : MonoBehaviour
 
         foreach (CardSource card in player.ExecutingCards)
         {
-            if (card != null && IsOption(card) && !list.Exists(p => p.Key == card))
+            if (card != null && IsOption(card) && !Contains(list, card))
             {
                 list.Add(new KeyValuePair<CardSource, Permanent>(card, null));
             }
         }
+    }
+
+    static bool Contains(List<KeyValuePair<CardSource, Permanent>> list, CardSource card)
+    {
+        for (int i = 0; i < list.Count; i++)
+        {
+            if (list[i].Key == card)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     static bool IsOption(CardSource card)

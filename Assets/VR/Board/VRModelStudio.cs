@@ -35,6 +35,8 @@ public class VRModelStudio : MonoBehaviour
     int _level = 5;
     float _yaw;
     int _loadToken;
+    int _clipIndex = -1;
+    string _clipName;
 
     string _loadedPath;
     float _height;
@@ -139,7 +141,8 @@ public class VRModelStudio : MonoBehaviour
         Plates(rows++, B("Next not sized >", NextUnsized), L(() => _includeNpcs ? "Show: all models" : "Show: Digimon only", ToggleNpcs));
         Plates(rows++, B("-15%", () => Scale(0.85f)), B("-3%", () => Scale(0.97f)), B("+3%", () => Scale(1f / 0.97f)), B("+15%", () => Scale(1f / 0.85f)));
         Plates(rows++, B("< Lv", () => Level(-1)), L(() => "Preview as Lv." + _level, null), B("Lv >", () => Level(1)));
-        Plates(rows++, B("Idle", () => Anim("_bn01")), B("Attack", () => Anim("_ba01")), B("Hit", () => Anim("_bd01")), B("Win", () => Anim("_bv01")));
+        Plates(rows++, B("Idle", () => Anim("_bn01")), B("Attack", () => Anim("_ba01")), B("Hit", () => Anim("_bd01")), B("KO", () => Anim(VRFieldModels.KnockDown)), B("Win", () => Anim("_bv01")));
+        Plates(rows++, B("< Clip", () => CycleClip(-1)), L(() => _clipName ?? "Browse all clips", null), B("Clip >", () => CycleClip(1)));
         Plates(rows++, B("Turn 45", () => { _yaw += 45f; ApplyTransform(); }), B("Auto size", ResetSize));
         Plates(rows++, B("SAVE + NEXT", SaveAndNext), B("Close", Close));
 
@@ -335,6 +338,8 @@ public class VRModelStudio : MonoBehaviour
         UnloadModel();
         VRModelLibrary.ModelInfo model = Current;
         _yaw = 0f;
+        _clipIndex = -1;
+        _clipName = null;
         _status = "";
         Refresh();
 
@@ -386,11 +391,14 @@ public class VRModelStudio : MonoBehaviour
                 anim.playAutomatically = false;
                 anim.cullingType = AnimationCullingType.AlwaysAnimate;
 
-                if (idle != null)
+                // Characters idle on "_fn01" instead of "_bn01".
+                string idleName = idle != null ? idle.name : VRCharacterReact.FindIdle(anim);
+
+                if (idleName != null)
                 {
-                    _idles[side] = idle.name;
-                    anim[idle.name].wrapMode = WrapMode.Loop;
-                    anim.Play(idle.name);
+                    _idles[side] = idleName;
+                    anim[idleName].wrapMode = WrapMode.Loop;
+                    anim.Play(idleName);
                 }
             }
         }
@@ -456,6 +464,52 @@ public class VRModelStudio : MonoBehaviour
         }
 
         return top > bottom ? (top - bottom) / Mathf.Max(1e-4f, _arenaRoot.lossyScale.y) : 0f;
+    }
+
+    // Steps through every clip in the file (characters: reactions like _e551), so you can
+    // find the one to put in _DSTSModels/reactions.csv. The name shows on the panel.
+    void CycleClip(int delta)
+    {
+        Animation anim = _anims[0];
+
+        if (anim == null)
+        {
+            _status = "This model has no animations";
+            return;
+        }
+
+        List<string> names = new List<string>();
+
+        foreach (AnimationState state in anim)
+        {
+            names.Add(state.name);
+        }
+
+        if (names.Count == 0)
+        {
+            return;
+        }
+
+        _clipIndex = ((_clipIndex + delta) % names.Count + names.Count) % names.Count;
+        _clipName = names[_clipIndex] + "  (" + (_clipIndex + 1) + "/" + names.Count + ")";
+        string suffix = names[_clipIndex];
+
+        for (int side = 0; side < 2; side++)
+        {
+            Animation a = _anims[side];
+
+            if (a != null && a[suffix] != null)
+            {
+                a[suffix].wrapMode = WrapMode.Once;
+                a.Stop();
+                a.Play(suffix);
+
+                if (_idles[side] != null && _idles[side] != suffix)
+                {
+                    a.PlayQueued(_idles[side], QueueMode.CompleteOthers);
+                }
+            }
+        }
     }
 
     void Anim(string suffix)

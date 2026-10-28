@@ -95,6 +95,7 @@ public class VRSettingsPanel : MonoBehaviour
                 VRSession.Instance?.AvatarCams?.Reload();
             }
         });
+        Add(() => "Duel background: " + (VRSettings.DuelEnvironment ? "Digital World" : "Off"), () => VRSettings.DuelEnvironment = !VRSettings.DuelEnvironment);
         Add(() => "Arena view: " + (VRSettings.ArenaOverview ? "Overview (from above)" : "Ground level"), () =>
         {
             VRSettings.ArenaOverview = !VRSettings.ArenaOverview;

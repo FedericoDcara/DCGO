@@ -35,6 +35,8 @@ public class VROpponentAvatar : MonoBehaviour
     bool _failed;
     float _height = AvatarHeight;
     Transform _figure;
+    Animation _anim;
+    string _idle;
     readonly System.Collections.Generic.List<Renderer> _rim = new System.Collections.Generic.List<Renderer>();
     Material _rimIdle;
     Material _rimHover;
@@ -42,6 +44,13 @@ public class VROpponentAvatar : MonoBehaviour
     Material _rimTargetDim;
     VRLabel _caption;
     Transform _shieldRow;
+    Transform _deck;          // stack of card backs on the podium
+    Transform _deckTop;
+    VRLabel _deckLabel;
+    int _deckShown = -1;
+    const float CardThickness = 0.012f;   // giant-size cards: 0.6 x 0.84 m
+    const float DeckX = 0.95f;
+    const float DeckZ = -0.55f;
     Transform _handRow;          // her hand: small card backs fanned in front of her chest
     VRLabel _handCaption;
     readonly System.Collections.Generic.List<Renderer> _handSlots = new System.Collections.Generic.List<Renderer>();
@@ -93,6 +102,46 @@ public class VROpponentAvatar : MonoBehaviour
         _rimHover = VRMaterials.Unlit(Color.white);
         _rimTarget = VRMaterials.Unlit(new Color(1f, 0.85f, 0.2f));
         _rimTargetDim = VRMaterials.Unlit(new Color(0.8f, 0.45f, 0.1f));
+
+        // Her deck: a stack of card backs on the podium top (to her left, your right).
+        float ledge = top + 0.06f;
+        _deck = new GameObject("Deck") { layer = VRRig.Layer }.transform;
+        _deck.SetParent(_root, false);
+        _deck.localPosition = new Vector3(DeckX, ledge, DeckZ);
+        _deck.localRotation = Quaternion.Euler(0f, -8f, 0f);
+        GameObject body = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        body.name = "Edges";
+        body.layer = VRRig.Layer;
+        Destroy(body.GetComponent<Collider>());
+        body.transform.SetParent(_deck, false);
+        body.GetComponent<Renderer>().sharedMaterial = VRMaterials.Unlit(new Color(0.78f, 0.8f, 0.84f)); // paper edges
+        GameObject back = GameObject.CreatePrimitive(PrimitiveType.Quad);
+        back.name = "TopCardBack";
+        back.layer = VRRig.Layer;
+        Destroy(back.GetComponent<Collider>());
+        back.transform.SetParent(_deck, false);
+        back.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+        back.transform.localScale = new Vector3(0.6f, 0.84f, 1f);
+        Renderer backRenderer = back.GetComponent<Renderer>();
+        backRenderer.sharedMaterial = VRMaterials.Unlit(new Color(0.15f, 0.25f, 0.5f));
+        Sprite backSprite = ContinuousController.instance != null ? ContinuousController.instance.ReverseCard : null;
+
+        if (backSprite != null)
+        {
+            Texture2D texture = backSprite.texture;
+            Rect rect = backSprite.textureRect;
+            MaterialPropertyBlock block = new MaterialPropertyBlock();
+            block.SetTexture("_BaseMap", texture);
+            block.SetTexture("_MainTex", texture);
+            Vector4 st = new Vector4(rect.width / texture.width, rect.height / texture.height, rect.x / texture.width, rect.y / texture.height);
+            block.SetVector("_BaseMap_ST", st);
+            block.SetVector("_MainTex_ST", st);
+            backRenderer.sharedMaterial = VRMaterials.Unlit(Color.white);
+            backRenderer.SetPropertyBlock(block);
+        }
+
+        _deckTop = back.transform;
+        _deckLabel = VRLabel.Create(_root, Vector3.zero, Quaternion.identity, new Vector2(0.9f, 0.22f), "", Color.white, new Color(0.08f, 0.1f, 0.18f));
 
         // Laser target: podium + her upper body = attack the player.
         BoxCollider hit = _root.gameObject.AddComponent<BoxCollider>();
@@ -194,7 +243,9 @@ public class VROpponentAvatar : MonoBehaviour
         float grow = Mathf.Max(1f, _height / Mathf.Max(0.01f, MeasureHeight(holder)));
         holder.localScale *= grow;
         holder.localPosition *= grow; // keep the feet-centring offset in proportion
-        PlayIdle(holder.GetComponentInChildren<Animation>(true));
+        _anim = holder.GetComponentInChildren<Animation>(true);
+        PlayIdle(_anim);
+        _idle = VRCharacterReact.FindIdle(_anim);
         _loading = false;
     }
 
@@ -266,7 +317,7 @@ public class VROpponentAvatar : MonoBehaviour
         // Podium frame: white when pointed at, pulsing gold when she can be attacked.
         bool hovered = VRArenaTarget.Hovered != null && VRArenaTarget.Hovered.OpponentPlayer;
         Board3D board = VRSession.Instance != null ? VRSession.Instance.Board : null;
-        bool target = board != null && board.OpponentIsTarget;
+        bool target = (board != null && board.OpponentIsTarget) || VRPromptBridge.OpponentSecurityClickable;
         Material rim = hovered ? _rimHover : target ? (Mathf.Sin(Time.unscaledTime * 6f) > 0f ? _rimTarget : _rimTargetDim) : _rimIdle;
 
         foreach (Renderer renderer in _rim)
@@ -288,6 +339,8 @@ public class VROpponentAvatar : MonoBehaviour
         {
             _shieldGlow.sharedMaterial = rim;
         }
+
+        UpdateDeck(context.Opponent.LibraryCards.Count, top: AvatarHeight * WaistRatio + 0.06f);
 
         // Above her head: the label just over it, the shields on top.
         _caption.transform.localPosition = new Vector3(0f, _height + 0.3f, 0.25f);
@@ -400,6 +453,26 @@ public class VROpponentAvatar : MonoBehaviour
         _backBlock.SetVector("_BaseMap_ST", st);
         _backBlock.SetVector("_MainTex_ST", st);
         return _backBlock;
+    }
+
+    // ---------------------------------------------------------------- deck
+
+    void UpdateDeck(int count, float top)
+    {
+        if (_deck == null || count == _deckShown)
+        {
+            return;
+        }
+
+        _deckShown = count;
+        float height = Mathf.Max(0.004f, count * CardThickness);
+        Transform edges = _deck.Find("Edges");
+        edges.localScale = new Vector3(0.6f, height, 0.84f);
+        edges.localPosition = new Vector3(0f, height * 0.5f, 0f);
+        _deck.gameObject.SetActive(count > 0);
+        _deckTop.localPosition = new Vector3(0f, height + 0.002f, 0f);
+        _deckLabel.transform.localPosition = new Vector3(DeckX, top + height + 0.3f, DeckZ - 0.1f);
+        _deckLabel.text = "<b>DECK " + count + "</b>";
     }
 
     // ---------------------------------------------------------------- security shields
@@ -590,6 +663,21 @@ public class VROpponentAvatar : MonoBehaviour
 
         float scale = Mathf.Max(1e-4f, model.parent != null ? model.parent.lossyScale.y : 1f);
         return top > bottom ? (top - bottom) / scale : 0f;
+    }
+
+    void OnEnable() => VRSecurityBattle.SecurityHit += OnSecurityHit;
+
+    void OnDisable() => VRSecurityBattle.SecurityHit -= OnSecurityHit;
+
+    // Her security was broken: she reacts (Mirei: npc012a_e551).
+    void OnSecurityHit(Player owner)
+    {
+        GameContext context = BoardObserver.Context;
+
+        if (context != null && owner == context.Opponent && _model != null)
+        {
+            VRCharacterReact.Play(_anim, _idle, VRCharacterReact.HitClipsFor(ModelKey));
+        }
     }
 
     void OnDestroy()

@@ -34,6 +34,7 @@ public class VRAvatarCams : MonoBehaviour
     string _myKey;
     bool _myLoading;
     Animation _myAnim;
+    string _myIdle;
     int _myToken;
 
     public static VRAvatarCams Create(Transform parent)
@@ -244,20 +245,33 @@ public class VRAvatarCams : MonoBehaviour
             _myAnim.playAutomatically = false;
             _myAnim.cullingType = AnimationCullingType.AlwaysAnimate;
 
-            foreach (AnimationState state in _myAnim)
+            _myIdle = VRCharacterReact.FindIdle(_myAnim);
+
+            if (_myIdle != null)
             {
-                if (state.name.Contains("_fn01") || state.name.Contains("_bn01"))
-                {
-                    state.wrapMode = WrapMode.Loop;
-                    _myAnim.Play(state.name);
-                    break;
-                }
+                _myAnim[_myIdle].wrapMode = WrapMode.Loop;
+                _myAnim.Play(_myIdle);
             }
         }
 
         if (_yours != null)
         {
             _yours.Name.text = "YOU - " + info.Name;
+        }
+    }
+
+    void OnEnable() => VRSecurityBattle.SecurityHit += OnSecurityHit;
+
+    void OnDisable() => VRSecurityBattle.SecurityHit -= OnSecurityHit;
+
+    // Your security was broken: your avatar reacts in its webcam.
+    void OnSecurityHit(Player owner)
+    {
+        GameContext context = BoardObserver.Context;
+
+        if (context != null && owner == context.You && _myModel != null)
+        {
+            VRCharacterReact.Play(_myAnim, _myIdle, VRCharacterReact.HitClipsFor(_myKey));
         }
     }
 

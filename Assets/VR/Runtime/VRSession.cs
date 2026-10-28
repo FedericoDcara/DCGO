@@ -40,6 +40,8 @@ public class VRSession : MonoBehaviour
 
     void Update()
     {
+        VRDiag.Flush();
+
         if (!_active || Rig == null)
         {
             return;
@@ -122,6 +124,7 @@ public class VRSession : MonoBehaviour
     void Awake()
     {
         Instance = this;
+        VRDiag.Install();
     }
 
     IEnumerator Start()
@@ -185,6 +188,8 @@ public class VRSession : MonoBehaviour
         VRArenaOptions.Create(transform, Rig.ArenaAnchor);
         VRBreedingDisplay.Create(transform, Rig.ArenaAnchor);
         AvatarCams = VRAvatarCams.Create(transform);
+        VRRevealPanel.Create(transform, Rig.Camera.transform);
+        VRDuelEnvironment.Create(transform, Rig.ArenaAnchor);
         Perf = VRPerf.Create(transform, Rig);
         VRPerf.ApplyRenderScale();
         Rig.ViewChanged += ApplyView;
@@ -272,6 +277,7 @@ public class VRSession : MonoBehaviour
 
     void OnApplicationQuit()
     {
+        VRDiag.Flush(force: true);
         StopXR();
     }
 

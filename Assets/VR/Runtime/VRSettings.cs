@@ -5,7 +5,7 @@ using UnityEngine;
 // Player preferences for the VR room, stored in PlayerPrefs (per machine).
 public static class VRSettings
 {
-    public static bool HideScreenInDuel { get => Get("HideScreen", false); set => Set("HideScreen", value); }
+    public static bool HideScreenInDuel { get => Get("HideScreen2", true); set => Set("HideScreen2", value); } // hidden by default: its rendering costs frames, VR shows everything
     public static bool Haptics { get => Get("Haptics", true); set => Set("Haptics", value); }
     public static bool HandFloating { get => Get("HandFloating", false); set => Set("HandFloating", value); }
     public static bool CardPreview { get => Get("Preview", true); set => Set("Preview", value); }
@@ -48,6 +48,9 @@ public static class VRSettings
 
     /// <summary>Webcam portraits of both players beside the memory gauge.</summary>
     public static bool AvatarCams { get => Get("AvatarCams", true); set => Set("AvatarCams", value); }
+
+    /// <summary>Digital World surroundings in duels (grid floor, horizon, data waterfalls).</summary>
+    public static bool DuelEnvironment { get => Get("DuelEnvironment", true); set => Set("DuelEnvironment", value); }
 
     public static bool PerfStats { get => Get("PerfStats", false); set => Set("PerfStats", value); }
     /// <summary>Full Debug.Log output with stack traces (off = faster: only warnings / errors, no stack traces).</summary>

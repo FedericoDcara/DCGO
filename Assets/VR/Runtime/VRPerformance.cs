@@ -19,7 +19,7 @@ public static class VRPerformance
 
         if (!VRSettings.VerboseLogs)
         {
-            Debug.unityLogger.filterLogType = LogType.Warning; // keep warnings, errors, exceptions
+            VRDiag.SetQuiet(true); // console: warnings, errors, exceptions only; "[DCGO VR]" lines still reach vr-diag.log
             Application.SetStackTraceLogType(LogType.Log, StackTraceLogType.None);
             Application.SetStackTraceLogType(LogType.Warning, StackTraceLogType.None);
         }
@@ -31,7 +31,7 @@ public static class VRPerformance
     public static void SetVerboseLogs(bool verbose)
     {
         VRSettings.VerboseLogs = verbose;
-        Debug.unityLogger.filterLogType = verbose ? LogType.Log : LogType.Warning;
+        VRDiag.SetQuiet(!verbose);
         Application.SetStackTraceLogType(LogType.Log, verbose ? StackTraceLogType.ScriptOnly : StackTraceLogType.None);
         Application.SetStackTraceLogType(LogType.Warning, verbose ? StackTraceLogType.ScriptOnly : StackTraceLogType.None);
     }

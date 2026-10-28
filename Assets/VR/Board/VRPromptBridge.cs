@@ -109,6 +109,34 @@ public static class VRPromptBridge
     /// <summary>Glow colour of a panel entry (blue = can be chosen, orange = chosen).</summary>
     public static Color? PanelOutline(HandCard handCard) => HandOutline(handCard);
 
+    static readonly System.Reflection.FieldInfo SecurityClickField =
+        typeof(SecurityObject).GetField("OnClickAction", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+
+    /// <summary>True while a prompt (e.g. an effect that makes your Digimon attack) lets you pick
+    /// the opponent player as the target: the flat game then waits for a click on their security.</summary>
+    public static bool OpponentSecurityClickable
+    {
+        get
+        {
+            GameContext context = BoardObserver.Context;
+            SecurityObject security = context != null && context.Opponent != null ? context.Opponent.securityObject : null;
+            return security != null && SecurityClickField != null && SecurityClickField.GetValue(security) != null;
+        }
+    }
+
+    /// <summary>Clicks the opponent's security the way the flat screen does (attack the player).</summary>
+    public static bool TryClickOpponentSecurity()
+    {
+        if (!OpponentSecurityClickable)
+        {
+            return false;
+        }
+
+        BoardObserver.Context.Opponent.securityObject.OnClick();
+        Debug.Log("[DCGO VR] Prompt: clicked the opponent's security (attack the player)");
+        return true;
+    }
+
     /// <summary>The outline the flat UI shows on this card right now, as a VR glow colour (or null).</summary>
     public static Color? OutlineColor(CardSource card, GameContext context)
     {

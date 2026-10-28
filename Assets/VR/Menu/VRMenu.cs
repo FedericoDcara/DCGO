@@ -23,6 +23,9 @@ public partial class VRMenu : MonoBehaviour
     const float Refresh = 0.2f;
     const float PanelH = 0.86f;
 
+    // Deck editing uses the flat screen (the VR editor drops too many frames).
+    static readonly bool EditorInVR = false;
+
     static readonly Color FrameColor = new Color(0.035f, 0.06f, 0.10f);
     static readonly Color AccentColor = new Color(0.25f, 0.85f, 1f);
     static readonly Color TitleColor = new Color(1f, 0.82f, 0.25f);
@@ -97,7 +100,10 @@ public partial class VRMenu : MonoBehaviour
     float _panelW = 1.42f;
 
     /// <summary>True while a VR page replaces the flat screen.</summary>
-    public bool ShowsPage => !_classic && _spec != null && _spec.Page != Page.None;
+    public bool ShowsPage => !_classic && _spec != null && _spec.Page != Page.None && !FlatPage;
+
+    /// <summary>Pages the VR menu leaves to the flat screen.</summary>
+    bool FlatPage => !EditorInVR && _spec != null && _spec.Page == Page.Editor;
 
     public static VRMenu Create(Transform parent, VRRig rig)
     {
@@ -790,7 +796,7 @@ public partial class VRMenu : MonoBehaviour
     // under the big flat screen otherwise.
     void PlaceToggle()
     {
-        bool page = _spec != null && _spec.Page != Page.None;
+        bool page = _spec != null && _spec.Page != Page.None && !FlatPage;
         bool visible = page || _classic;
 
         if (_toggle.gameObject.activeSelf != visible)
