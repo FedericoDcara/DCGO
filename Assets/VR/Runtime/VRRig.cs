@@ -123,14 +123,29 @@ public class VRRig : MonoBehaviour
 
     GameObject _floor;
     GameObject _platform;
+    bool _overviewRoom;
+    bool _roomFloor = true;
+
+    /// <summary>The plain room floor; hidden while the menu island is your ground.</summary>
+    public void SetRoomFloor(bool visible)
+    {
+        _roomFloor = visible;
+
+        if (_floor != null)
+        {
+            _floor.SetActive(_roomFloor && !_overviewRoom);
+        }
+    }
 
     // Overview hides the room floor (the arena lies far below) and shows a small
     // glowing platform under the seat so you still feel grounded.
     void SetOverviewRoom(bool overview)
     {
-        if (_floor != null && _floor.activeSelf == overview)
+        _overviewRoom = overview;
+
+        if (_floor != null && _floor.activeSelf != (!overview && _roomFloor))
         {
-            _floor.SetActive(!overview);
+            _floor.SetActive(!overview && _roomFloor);
         }
 
         if (_platform == null && overview)

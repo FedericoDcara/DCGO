@@ -65,6 +65,7 @@ public class VROpponentAvatar : MonoBehaviour
     int _shown = -1;
     int _securityKey = int.MinValue;
     static Material _shieldMaterial;
+    static Material _blueShieldMaterial;
     static Material _cardMaterial;
     MaterialPropertyBlock _block;
 
@@ -345,6 +346,15 @@ public class VROpponentAvatar : MonoBehaviour
         // Above her head: the label just over it, the shields on top.
         _caption.transform.localPosition = new Vector3(0f, _height + 0.3f, 0.25f);
         _shieldRow.localPosition = new Vector3(0f, _height + 0.48f, 0.25f);
+
+        // Duel Ring: the security has its own tower in the arena; keep her head clear.
+        bool overHead = !VRFieldModels.RingLayout;
+
+        if (_shieldRow.gameObject.activeSelf != overHead)
+        {
+            _shieldRow.gameObject.SetActive(overHead);
+            _caption.gameObject.SetActive(overHead);
+        }
         _shown = context.Opponent.SecurityCards.Count;
         UpdateShields(context.Opponent.SecurityCards);
 
@@ -593,18 +603,24 @@ public class VROpponentAvatar : MonoBehaviour
     }
 
     // A heater shield drawn once into a texture: red body, light rim, a gold diamond emblem.
-    static Material ShieldMaterial()
+    /// <summary>The shield picture (red for the opponent, blue for you). Shared with the security towers.</summary>
+    public static Material ShieldMaterial(bool blue = false)
     {
-        if (_shieldMaterial != null)
+        if (!blue && _shieldMaterial != null)
         {
             return _shieldMaterial;
+        }
+
+        if (blue && _blueShieldMaterial != null)
+        {
+            return _blueShieldMaterial;
         }
 
         const int w = 128;
         const int h = 156;
         Texture2D texture = new Texture2D(w, h, TextureFormat.RGBA32, true) { wrapMode = TextureWrapMode.Clamp };
         Color32[] pixels = new Color32[w * h];
-        Color body = new Color(0.72f, 0.12f, 0.12f);
+        Color body = blue ? new Color(0.12f, 0.36f, 0.78f) : new Color(0.72f, 0.12f, 0.12f);
         Color rim = new Color(1f, 0.82f, 0.75f);
         Color gold = new Color(1f, 0.82f, 0.25f);
 
@@ -638,10 +654,20 @@ public class VROpponentAvatar : MonoBehaviour
 
         texture.SetPixels32(pixels);
         texture.Apply(true, true);
-        _shieldMaterial = VRMaterials.Transparent(Color.white);
-        _shieldMaterial.SetTexture("_BaseMap", texture);
-        _shieldMaterial.SetTexture("_MainTex", texture);
-        return _shieldMaterial;
+        Material material = VRMaterials.Transparent(Color.white);
+        material.SetTexture("_BaseMap", texture);
+        material.SetTexture("_MainTex", texture);
+
+        if (blue)
+        {
+            _blueShieldMaterial = material;
+        }
+        else
+        {
+            _shieldMaterial = material;
+        }
+
+        return material;
     }
 
     // Shield outline: straight sides at the top, curving to a point at the bottom.

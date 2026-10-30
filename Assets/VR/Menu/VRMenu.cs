@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using UnityEngine;
 using UnityEngine.UI;
+using S = VRMenuStyle;
 
 // === DCGO-CUSTOM:vr ===
 // Native VR menu (outside duels). It follows the hidden flat menu: several
@@ -14,6 +15,12 @@ using UnityEngine.UI;
 // clicks or the same public methods its buttons call), so matchmaking, deck
 // rules and saving are the game's own code.
 //
+// Look ("floating castle" system menu, see VRMenuStyle): the home screen is a
+// column of round icon buttons with name tags beside a player card; every
+// other page is a white panel with a header, an icon rail on its left (page
+// icon, back, classic screen) and amber highlights. Pages unfold and their
+// entries cascade in when they open.
+//
 // Pages: title, home, any dialog, battle deck choice, random lobby, rooms,
 // join room, deck browser, deck card list, test draw, deck editor (cards,
 // filters, deck list) and a generic mirror for every other window (options,
@@ -22,16 +29,11 @@ public partial class VRMenu : MonoBehaviour
 {
     const float Refresh = 0.2f;
     const float PanelH = 0.86f;
+    const float HeaderH = 0.072f;
+    const float RailGap = 0.085f;
 
     // Deck editing uses the flat screen (the VR editor drops too many frames).
     static readonly bool EditorInVR = false;
-
-    static readonly Color FrameColor = new Color(0.035f, 0.06f, 0.10f);
-    static readonly Color AccentColor = new Color(0.25f, 0.85f, 1f);
-    static readonly Color TitleColor = new Color(1f, 0.82f, 0.25f);
-    static readonly Color SelectedPlate = new Color(0.10f, 0.55f, 0.80f);
-    static readonly Color WarningPlate = new Color(0.55f, 0.10f, 0.10f);
-    static readonly Color LinePlate = new Color(0.07f, 0.13f, 0.20f);
 
     enum Page { None, Loading, Dialog, EnterRoom, SelectDeck, RandomLobby, Room, Title, Home, Decks, DeckList, TrialDraw, Editor, Window }
 
@@ -71,15 +73,24 @@ public partial class VRMenu : MonoBehaviour
         public List<Btn> Lines;
     }
 
+    sealed class Tween
+    {
+        public Transform T;
+        public Vector3 Pos;
+        public Vector3 Scale;
+        public Vector3 From;
+        public float Start;
+    }
+
     VRRig _rig;
     Transform _root;
     Transform _frame;
-    Transform _accent;
     VRLabel _title;
     VRLabel _body;
     VRLabel _side;
     VRLabel _footer;
     VRButton3D _toggle;
+    VRLabel _toggleTag;
     VRButton3D _preview;
     float _previewUntil;
     readonly List<GameObject> _dynamic = new List<GameObject>();
@@ -87,6 +98,7 @@ public partial class VRMenu : MonoBehaviour
     readonly Dictionary<int, Sprite> _sprites = new Dictionary<int, Sprite>();
     readonly Dictionary<string, float> _openedAt = new Dictionary<string, float>();
     readonly HashSet<string> _openNow = new HashSet<string>();
+    readonly List<Tween> _tweens = new List<Tween>();
     string _signature;
     float _next;
     int _deckPage;
@@ -98,12 +110,23 @@ public partial class VRMenu : MonoBehaviour
     float _pageSince;
     bool _captured;
     float _panelW = 1.42f;
+    float _panelH = PanelH;
+    string _frameKey;
+    Page _builtPage = Page.None;
+    bool _shown;
+    float _unfoldStart = -10f;
+    float _rootScale = 1f;
+    int _cascade;
+    Vector3 _toggleLocal;
+    Transform _pageIcon;
 
     /// <summary>True while a VR page replaces the flat screen.</summary>
     public bool ShowsPage => !_classic && _spec != null && _spec.Page != Page.None && !FlatPage;
 
     /// <summary>Pages the VR menu leaves to the flat screen.</summary>
     bool FlatPage => !EditorInVR && _spec != null && _spec.Page == Page.Editor;
+
+    bool Hub => _spec != null && (_spec.Page == Page.Home || _spec.Page == Page.Title);
 
     public static VRMenu Create(Transform parent, VRRig rig)
     {
@@ -120,45 +143,58 @@ public partial class VRMenu : MonoBehaviour
         _root = new GameObject("MenuPanel") { layer = VRRig.Layer }.transform;
         _root.SetParent(_rig.MenuAnchor, false);
 
-        _frame = Box("Frame", FrameColor);
-        _accent = Box("Accent", AccentColor);
+        _title = S.Text(_root, Vector3.zero, new Vector2(1.2f, 0.042f), "", S.Ink, S.Header, TMPro.TextAlignmentOptions.Left);
+        _body = VRLabel.CreateParagraph(_root, new Vector2(1.3f, 0.13f), 256, 44f, S.Ink, S.Panel);
+        _side = VRLabel.CreateParagraph(_root, new Vector2(0.44f, 0.30f), 384, 40f, S.Ink, S.Well);
+        _footer = S.Text(_root, Vector3.zero, new Vector2(0.95f, 0.024f), "", S.InkSoft, S.Panel, TMPro.TextAlignmentOptions.Left);
 
-        _title = VRLabel.Create(_root, Vector3.zero, Quaternion.identity, new Vector2(1.3f, 0.065f), "", TitleColor, FrameColor);
-        _body = VRLabel.CreateParagraph(_root, new Vector2(1.3f, 0.13f), 256, 44f, new Color(0.88f, 0.94f, 1f), FrameColor);
-        _side = VRLabel.CreateParagraph(_root, new Vector2(0.44f, 0.30f), 384, 40f, new Color(0.88f, 0.94f, 1f), new Color(0.05f, 0.10f, 0.15f));
-        _footer = VRLabel.Create(_root, Vector3.zero, Quaternion.identity, new Vector2(0.95f, 0.03f), "", new Color(0.6f, 0.75f, 0.85f), FrameColor);
-        _footer.alignment = TMPro.TextAlignmentOptions.Left;
+        // Classic screen / VR menu switch: a round button with a name tag.
+        _toggle = S.Button(transform, Vector3.zero, new Vector2(0.062f, 0.062f), S.Shape3.Disc, "CLASSIC SCREEN", S.Icon.Screen, ToggleClassic);
+        S.Card(_toggle.transform, "Tag", new Vector3(0f, -0.054f, 0.004f), new Vector2(0.13f, 0.026f), 0.013f, S.Header, S.Hairline, 0.0015f);
+        _toggleTag = S.Text(_toggle.transform, new Vector3(0f, -0.054f, -0.001f), new Vector2(0.11f, 0.017f), "CLASSIC", S.InkSoft, S.Header);
 
-        _toggle = VRButton3D.CreatePlate(transform, Vector3.zero, new Vector2(0.26f, 0.05f), "CLASSIC SCREEN", ToggleClassic);
         _preview = VRButton3D.CreateCard(_root, Vector3.zero, new Vector2(0.25f, 0.35f), null, null);
         _preview.Interactable = false;
         Destroy(_preview.GetComponent<Collider>());
+        S.Card(_preview.transform, "PreviewFrame", new Vector3(0f, 0f, 0.003f), new Vector2(0.262f, 0.362f), 0.012f, S.Header, S.Edge);
         _preview.gameObject.SetActive(false);
         _root.gameObject.SetActive(false);
         ApplyPanelSize(1.42f, PanelH);
     }
 
-    Transform Box(string name, Color color)
-    {
-        GameObject box = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        box.name = name;
-        box.layer = VRRig.Layer;
-        Destroy(box.GetComponent<Collider>());
-        box.transform.SetParent(_root, false);
-        box.GetComponent<Renderer>().sharedMaterial = VRMaterials.Unlit(color);
-        return box.transform;
-    }
-
+    // The panel frame: soft halo, edged body, white header with an amber tick and underline.
     void ApplyPanelSize(float width, float height)
     {
         _panelW = width;
-        _frame.localPosition = new Vector3(0f, 0f, 0.012f);
-        _frame.localScale = new Vector3(width, height, 0.01f);
-        _accent.localPosition = new Vector3(0f, height * 0.5f, 0.008f);
-        _accent.localScale = new Vector3(width, 0.008f, 0.012f);
-        _title.Size = new Vector2(width - 0.1f, 0.065f);
-        _title.transform.localPosition = new Vector3(0f, height * 0.5f - 0.055f, 0f);
-        _footer.transform.localPosition = new Vector3(-width * 0.5f + 0.05f + 0.475f, -height * 0.5f + 0.035f, 0f);
+        _panelH = height;
+        string key = width.ToString("F3") + "x" + height.ToString("F3");
+
+        if (_frameKey != key)
+        {
+            _frameKey = key;
+
+            if (_frame != null)
+            {
+                Destroy(_frame.gameObject);
+            }
+
+            _frame = new GameObject("Frame") { layer = VRRig.Layer }.transform;
+            _frame.SetParent(_root, false);
+            float top = height * 0.5f;
+            float left = -width * 0.5f + 0.05f;
+            S.Shape(_frame, "Halo", S.RoundedRect(width + 0.05f, height + 0.05f, 0.05f), S.Glass(S.Halo), new Vector3(0f, 0f, 0.02f));
+            S.Card(_frame, "Body", new Vector3(0f, 0f, 0.012f), new Vector2(width, height), 0.03f, S.Panel, S.Edge, 0.003f);
+            S.Card(_frame, "Header", new Vector3(0f, top - 0.012f - HeaderH * 0.5f, 0.0105f), new Vector2(width - 0.024f, HeaderH), 0.022f, S.Header);
+            S.Shape(_frame, "Tick", S.RoundedRect(0.007f, 0.036f, 0.0035f), S.Solid(S.Accent), new Vector3(left - 0.012f, top - 0.012f - HeaderH * 0.5f, 0.009f));
+            S.Shape(_frame, "Rule", S.RoundedRect(width - 0.07f, 0.0022f, 0f), S.Solid(S.Hairline), new Vector3(0f, top - 0.094f, 0.0105f));
+            S.Shape(_frame, "Underline", S.RoundedRect(0.18f, 0.004f, 0.002f), S.Solid(S.Accent), new Vector3(left + 0.09f, top - 0.094f, 0.0098f));
+            S.Shape(_frame, "FootRule", S.RoundedRect(width - 0.07f, 0.0018f, 0f), S.Solid(S.Hairline), new Vector3(0f, -height * 0.5f + 0.058f, 0.0105f));
+        }
+
+        _title.Size = new Vector2(width - 0.14f, 0.040f);
+        _title.transform.localPosition = new Vector3(0.005f, height * 0.5f - 0.012f - HeaderH * 0.5f, 0f);
+        _footer.Size = new Vector2(0.95f, 0.022f);
+        _footer.transform.localPosition = new Vector3(-width * 0.5f + 0.05f + 0.475f, -height * 0.5f + 0.032f, 0f);
     }
 
     void ToggleClassic()
@@ -184,6 +220,7 @@ public partial class VRMenu : MonoBehaviour
             _root.gameObject.SetActive(false);
             _preview.gameObject.SetActive(false);
             _spec = null;
+            _shown = false;
         }
     }
 
@@ -220,6 +257,7 @@ public partial class VRMenu : MonoBehaviour
             }
         }
 
+        Animate();
         UpdatePreview();
         PlaceToggle();
     }
@@ -331,6 +369,7 @@ public partial class VRMenu : MonoBehaviour
 
         if (!show)
         {
+            _shown = false;
             return;
         }
 
@@ -344,10 +383,10 @@ public partial class VRMenu : MonoBehaviour
 
         _title.text = _spec.Title;
         _body.text = _spec.Body;
-        _side.text = _spec.Side;
+        _side.text = Hub ? "" : _spec.Side;
         string player = ContinuousController.instance != null ? ContinuousController.instance.PlayerName : "";
         string version = Opening.instance != null && Opening.instance.VerText != null ? Opening.instance.VerText.text : "";
-        _footer.text = (string.IsNullOrEmpty(player) ? "" : "Player: " + player + "     ") + version;
+        _footer.text = Hub ? version : (string.IsNullOrEmpty(player) ? "" : "Player: " + player + "     ") + version;
     }
 
     string Signature(Spec spec)
@@ -395,6 +434,32 @@ public partial class VRMenu : MonoBehaviour
     float SideCenter => Right - SideWidth * 0.5f;
     float GridRight => SideCenter - SideWidth * 0.5f - 0.04f;
 
+    static bool IsBack(string label)
+    {
+        string l = (label ?? "").Trim().ToUpperInvariant();
+        return l == "BACK" || l == "CLOSE";
+    }
+
+    static S.Icon PageIcon(Page page)
+    {
+        switch (page)
+        {
+            case Page.Loading: return S.Icon.Hourglass;
+            case Page.Dialog: return S.Icon.Info;
+            case Page.EnterRoom:
+            case Page.Room: return S.Icon.Room;
+            case Page.RandomLobby: return S.Icon.Bolt;
+            case Page.SelectDeck:
+            case Page.Decks: return S.Icon.Decks;
+            case Page.DeckList:
+            case Page.TrialDraw:
+            case Page.Editor: return S.Icon.Cards;
+            case Page.Window: return S.Icon.Options;
+            case Page.Home: return S.Icon.Home;
+            default: return S.Icon.Play;
+        }
+    }
+
     void Rebuild()
     {
         foreach (GameObject go in _dynamic)
@@ -407,30 +472,66 @@ public partial class VRMenu : MonoBehaviour
 
         _dynamic.Clear();
         _cardButtons.Clear();
+        _tweens.Clear();
+        _pageIcon = null;
+        _cascade = 0;
+
+        // A new page (or the menu just came back): unfold the panel and cascade its entries in.
+        bool animate = !_shown || _spec.Page != _builtPage;
+        _shown = true;
+        _builtPage = _spec.Page;
+
+        if (animate)
+        {
+            _unfoldStart = Time.unscaledTime;
+        }
+
+        if (Hub)
+        {
+            RebuildHub(animate);
+            return;
+        }
 
         float height = _spec.Wide ? 0.96f : PanelH;
         ApplyPanelSize(_spec.Wide ? 1.9f : 1.42f, height);
-        _root.localScale = Vector3.one * (_spec.Wide ? 0.92f : 1f);
+        _frame.gameObject.SetActive(true);
+        _title.alignment = TMPro.TextAlignmentOptions.Left;
+        _rootScale = _spec.Wide ? 0.92f : 1f;
+        _root.localScale = Vector3.one * _rootScale;
         float top = height * 0.5f;
 
-        List<Btn> main = _spec.Buttons.FindAll(b => b.Zone == Zone.Main);
-        List<Btn> side = _spec.Buttons.FindAll(b => b.Zone == Zone.Side);
-        List<Btn> bar = _spec.Buttons.FindAll(b => b.Zone == Zone.Bar);
+        // BACK / CLOSE move to the rail (round back button) on ordinary pages.
+        Btn back = _spec.Page == Page.Dialog || _spec.Page == Page.RandomLobby ? null : _spec.Buttons.FirstOrDefault(b => IsBack(b.Label));
+        List<Btn> main = _spec.Buttons.FindAll(b => b.Zone == Zone.Main && b != back);
+        List<Btn> side = _spec.Buttons.FindAll(b => b.Zone == Zone.Side && b != back);
+        List<Btn> bar = _spec.Buttons.FindAll(b => b.Zone == Zone.Bar && b != back);
         bool hasSide = HasGrid || side.Count > 0 || !string.IsNullOrEmpty(_spec.Side) || _spec.Lines != null;
+
+        BuildRail(top, back);
 
         // Body: full width on simple pages, one hint line over the grid otherwise.
         float bodyRight = hasSide ? GridRight : Right;
-        float bodyH = HasGrid ? 0.06f : 0.13f;
+        float bodyH = HasGrid ? 0.05f : 0.13f;
         _body.Size = new Vector2(bodyRight - Left, bodyH);
-        _body.transform.localPosition = new Vector3((Left + bodyRight) * 0.5f, top - 0.1f - bodyH * 0.5f, 0f);
+        _body.transform.localPosition = new Vector3((Left + bodyRight) * 0.5f, top - 0.105f - bodyH * 0.5f, 0f);
+        _body.gameObject.SetActive(true);
+        _footer.gameObject.SetActive(true);
 
+        // Side column: an inset well holding the details text and the side buttons.
         _side.gameObject.SetActive(hasSide);
-        float sideTextH = _spec.Lines != null ? 0.11f : HasGrid ? 0.30f : 0.28f;
-        _side.Size = new Vector2(SideWidth, sideTextH);
-        _side.transform.localPosition = new Vector3(SideCenter, top - 0.1f - sideTextH * 0.5f, 0f);
+        float sideTextH = _spec.Lines != null ? 0.11f : HasGrid ? 0.26f : 0.24f;
+        _side.Size = new Vector2(SideWidth - 0.01f, sideTextH);
+        _side.transform.localPosition = new Vector3(SideCenter, top - 0.115f - sideTextH * 0.5f, 0f);
 
-        float gridTop = top - 0.1f - bodyH - 0.02f;
-        float gridBottom = -height * 0.5f + (bar.Count > 0 ? 0.13f : 0.08f);
+        if (hasSide)
+        {
+            float wellTop = top - 0.105f;
+            float wellBottom = -height * 0.5f + 0.07f;
+            Track(S.Card(_root, "SideWell", new Vector3(SideCenter, (wellTop + wellBottom) * 0.5f, 0.008f), new Vector2(SideWidth + 0.024f, wellTop - wellBottom), 0.02f, S.Well).gameObject);
+        }
+
+        float gridTop = top - 0.105f - bodyH - 0.02f;
+        float gridBottom = -height * 0.5f + (bar.Count > 0 ? 0.135f : 0.09f);
 
         if (_spec.Decks != null)
         {
@@ -441,7 +542,7 @@ public partial class VRMenu : MonoBehaviour
             BuildCardGrid(gridTop, gridBottom);
         }
 
-        // Main buttons: a centred column (left of the side panel when there is one).
+        // Main buttons: a centred list (left of the side column when there is one).
         if (main.Count > 0)
         {
             float areaLeft = Left;
@@ -449,20 +550,20 @@ public partial class VRMenu : MonoBehaviour
             float center = (areaLeft + areaRight) * 0.5f;
             bool twoColumns = main.Count > 5;
             int perColumn = twoColumns ? Mathf.CeilToInt(main.Count / 2f) : main.Count;
-            float width = twoColumns ? Mathf.Min(0.42f, (areaRight - areaLeft) * 0.5f - 0.03f) : 0.56f;
-            float startY = HasGrid ? gridTop - 0.04f : top - 0.1f - bodyH - 0.07f;
+            float width = twoColumns ? Mathf.Min(0.44f, (areaRight - areaLeft) * 0.5f - 0.03f) : 0.58f;
+            float startY = HasGrid ? gridTop - 0.04f : top - 0.105f - bodyH - 0.07f;
 
             for (int i = 0; i < main.Count; i++)
             {
                 int column = twoColumns ? i / perColumn : 0;
                 int row = twoColumns ? i % perColumn : i;
                 float x = twoColumns ? center + (column == 0 ? -1f : 1f) * (width * 0.5f + 0.015f) : center;
-                AddButton(main[i], new Vector3(x, startY - row * 0.088f, 0f), new Vector2(width, 0.072f));
+                AddButton(main[i], new Vector3(x, startY - row * 0.086f, 0f), new Vector2(width, 0.070f), S.Shape3.Bar);
             }
         }
 
         // Side: the deck list lines (editor), then the side buttons.
-        float sideY = top - 0.1f - sideTextH - 0.03f;
+        float sideY = top - 0.115f - sideTextH - 0.02f;
 
         if (_spec.Lines != null)
         {
@@ -471,36 +572,193 @@ public partial class VRMenu : MonoBehaviour
 
         if (side.Count > 0)
         {
-            int columns = side.Count > 4 ? (_spec.Wide ? 3 : 2) : 1;
+            int columns = side.Count > 4 ? 2 : 1;
             float gap = 0.012f;
             float width = (SideWidth - gap * (columns - 1)) / columns;
-            float rowH = 0.066f;
+            float rowH = 0.058f;
 
             for (int i = 0; i < side.Count; i++)
             {
                 int column = i % columns;
                 int row = i / columns;
                 float x = SideCenter - SideWidth * 0.5f + width * 0.5f + column * (width + gap);
-                AddButton(side[i], new Vector3(x, sideY - rowH * 0.5f - row * (rowH + 0.012f), 0f), new Vector2(width, rowH));
+                AddButton(side[i], new Vector3(x, sideY - rowH * 0.5f - row * (rowH + 0.01f), 0f), new Vector2(width, rowH), S.Shape3.Bar);
             }
         }
 
-        // Bar: small buttons along the bottom of the grid area.
+        // Bar: compact entries along the bottom of the grid area.
         float barX = Left;
 
         foreach (Btn button in bar)
         {
-            float width = Mathf.Clamp(0.03f + button.Label.Length * 0.017f, 0.12f, 0.36f);
-            AddButton(button, new Vector3(barX + width * 0.5f, -height * 0.5f + 0.095f, 0f), new Vector2(width, 0.052f));
+            float width = Mathf.Clamp(0.07f + button.Label.Length * 0.016f, 0.15f, 0.40f);
+            AddButton(button, new Vector3(barX + width * 0.5f, -height * 0.5f + 0.098f, 0f), new Vector2(width, 0.05f), S.Shape3.Bar);
             barX += width + 0.012f;
         }
     }
 
-    void AddButton(Btn spec, Vector3 position, Vector2 size)
+    // Left of the panel: page icon, back, classic-screen switch, on a thin rail.
+    void BuildRail(float top, Btn back)
+    {
+        float x = -_panelW * 0.5f - 0.075f;
+        float y = top - 0.05f;
+        int slots = back != null ? 3 : 2;
+        float bottom = y - (slots - 1) * RailGap;
+        Track(S.Shape(_root, "Rail", S.RoundedRect(0.004f, y - bottom + 0.02f, 0.002f), S.Solid(S.Edge), new Vector3(x, (y + bottom) * 0.5f, 0.01f)).gameObject);
+
+        Transform icon = new GameObject("PageIcon") { layer = VRRig.Layer }.transform;
+        icon.SetParent(_root, false);
+        icon.localPosition = new Vector3(x, y, 0f);
+        S.Shape(icon, "Edge", S.Disc(0.081f), S.Solid(S.AccentDeep), new Vector3(0f, 0f, 0.0015f));
+        S.Shape(icon, "Disc", S.Disc(0.075f), S.Solid(S.Accent), Vector3.zero);
+        S.IconQuad(icon, PageIcon(_spec.Page), 0.044f, new Vector3(0f, 0f, -0.003f)).transform.localRotation = Quaternion.identity;
+        _pageIcon = _spec.Page == Page.Loading ? icon : null;
+        Track(icon.gameObject);
+        y -= RailGap;
+
+        if (back != null)
+        {
+            AddButton(back, new Vector3(x, y, 0f), new Vector2(0.062f, 0.062f), S.Shape3.Disc, S.Icon.Back);
+            y -= RailGap;
+        }
+
+        _toggleLocal = new Vector3(x, y, 0f);
+    }
+
+    // Home / title: a column of round icon buttons with name tags, beside a player card.
+    void RebuildHub(bool animate)
+    {
+        _frame.gameObject.SetActive(false);
+        _rootScale = 1f;
+        _root.localScale = Vector3.one;
+        _side.gameObject.SetActive(false);
+        List<Btn> buttons = _spec.Buttons;
+        const float step = 0.096f;
+        const float discD = 0.08f;
+        const float itemW = 0.40f;
+        float columnX = 0.12f;
+        float discX = columnX - itemW * 0.5f + discD * 0.5f;
+        float firstY = (buttons.Count - 1) * step * 0.5f - 0.02f;
+        float lastY = firstY - (buttons.Count - 1) * step;
+
+        // Title plate above everything.
+        float titleY = Mathf.Max(firstY, 0.17f) + 0.12f;
+        Transform plate = S.Card(_root, "TitlePlate", new Vector3(0f, titleY, 0.006f), new Vector2(0.50f, 0.074f), 0.022f, S.Header, S.Edge);
+        Track(plate.gameObject);
+        Track(S.Shape(_root, "TickL", S.RoundedRect(0.007f, 0.034f, 0.0035f), S.Solid(S.Accent), new Vector3(-0.22f, titleY, 0.003f)).gameObject);
+        Track(S.Shape(_root, "TickR", S.RoundedRect(0.007f, 0.034f, 0.0035f), S.Solid(S.Accent), new Vector3(0.22f, titleY, 0.003f)).gameObject);
+        _title.Size = new Vector2(0.40f, 0.042f);
+        _title.transform.localPosition = new Vector3(0f, titleY, 0f);
+        _title.alignment = TMPro.TextAlignmentOptions.Center;
+
+        // Player card on the left.
+        const float cardW = 0.36f;
+        const float cardH = 0.40f;
+        float cardX = discX - 0.08f - cardW * 0.5f;
+        float cardY = 0f;
+        float cardTop = cardY + cardH * 0.5f;
+        Transform card = S.Card(_root, "PlayerCard", new Vector3(cardX, cardY, 0.012f), new Vector2(cardW, cardH), 0.026f, S.Panel, S.Edge);
+        S.Card(card, "Head", new Vector3(0f, cardH * 0.5f - 0.045f, -0.0015f), new Vector2(cardW - 0.02f, 0.07f), 0.02f, S.Header);
+        S.Shape(card, "Avatar", S.Disc(0.054f), S.Solid(S.Accent), new Vector3(-cardW * 0.5f + 0.05f, cardH * 0.5f - 0.045f, -0.003f));
+        S.IconQuad(card, S.Icon.Person, 0.034f, new Vector3(-cardW * 0.5f + 0.05f, cardH * 0.5f - 0.045f, -0.0045f));
+        S.Shape(card, "Rule", S.RoundedRect(cardW - 0.05f, 0.0022f, 0f), S.Solid(S.Hairline), new Vector3(0f, cardH * 0.5f - 0.092f, -0.0015f));
+        Track(card.gameObject);
+        string player = ContinuousController.instance != null ? ContinuousController.instance.PlayerName : "";
+        VRLabel name = S.Text(card, new Vector3(0.03f, cardH * 0.5f - 0.045f, -0.006f), new Vector2(cardW - 0.13f, 0.03f), string.IsNullOrEmpty(player) ? "PLAYER" : player, S.Ink, S.Header, TMPro.TextAlignmentOptions.Left);
+        _dynamic.Add(name.gameObject);
+
+        _body.Size = new Vector2(cardW - 0.04f, 0.20f);
+        _body.transform.localPosition = new Vector3(cardX, cardTop - 0.105f - 0.10f, -0.004f);
+        _body.gameObject.SetActive(true);
+        _footer.Size = new Vector2(cardW - 0.05f, 0.02f);
+        _footer.transform.localPosition = new Vector3(cardX, cardY - cardH * 0.5f + 0.028f, -0.004f);
+        _footer.gameObject.SetActive(true);
+
+        // The column: a thin rail behind the discs, then one tagged button per entry.
+        if (buttons.Count > 1)
+        {
+            Track(S.Shape(_root, "Rail", S.RoundedRect(0.004f, firstY - lastY, 0.002f), S.Solid(S.Edge), new Vector3(discX, (firstY + lastY) * 0.5f, 0.012f)).gameObject);
+        }
+
+        for (int i = 0; i < buttons.Count; i++)
+        {
+            AddButton(buttons[i], new Vector3(columnX, firstY - i * step, 0f), new Vector2(itemW, discD), S.Shape3.Tagged);
+        }
+
+        _toggleLocal = new Vector3(cardX + cardW * 0.5f - 0.05f, cardY - cardH * 0.5f - 0.06f, 0f);
+    }
+
+    void Track(GameObject go)
+    {
+        _dynamic.Add(go);
+    }
+
+    // Entries appear one after another: grow from nothing while sliding into place.
+    void Pop(Transform t, int order, bool animate, Vector3? from = null)
+    {
+        if (!animate || t == null)
+        {
+            return;
+        }
+
+        Tween tween = new Tween
+        {
+            T = t,
+            Pos = t.localPosition,
+            Scale = t.localScale,
+            From = from ?? new Vector3(-0.03f, 0f, 0f),
+            Start = Time.unscaledTime + 0.09f + order * 0.028f,
+        };
+        _tweens.Add(tween);
+        t.localPosition = tween.Pos + tween.From;
+        t.localScale = tween.Scale * 0.001f;
+    }
+
+    void Animate()
+    {
+        float now = Time.unscaledTime;
+
+        // Panel unfold: the page opens from a thin line (vertical scale).
+        float unfold = Mathf.Clamp01((now - _unfoldStart) / 0.2f);
+
+        if (_root != null && _root.gameObject.activeSelf && unfold < 1.0001f)
+        {
+            float e = 1f - Mathf.Pow(1f - unfold, 3f);
+            _root.localScale = new Vector3(_rootScale, _rootScale * Mathf.Lerp(0.04f, 1f, e), _rootScale);
+        }
+
+        for (int i = _tweens.Count - 1; i >= 0; i--)
+        {
+            Tween tween = _tweens[i];
+
+            if (tween.T == null)
+            {
+                _tweens.RemoveAt(i);
+                continue;
+            }
+
+            float p = Mathf.Clamp01((now - tween.Start) / 0.2f);
+            float e = 1f - Mathf.Pow(1f - p, 3f);
+            tween.T.localPosition = tween.Pos + tween.From * (1f - e);
+            tween.T.localScale = tween.Scale * Mathf.Max(0.001f, e);
+
+            if (p >= 1f)
+            {
+                _tweens.RemoveAt(i);
+            }
+        }
+
+        if (_pageIcon != null)
+        {
+            _pageIcon.localRotation = Quaternion.Euler(0f, 0f, -now * 120f);
+        }
+    }
+
+    void AddButton(Btn spec, Vector3 position, Vector2 size, S.Shape3 shape, S.Icon? icon = null)
     {
         Action act = spec.Act;
         string label = spec.Label;
-        VRButton3D button = VRButton3D.CreatePlate(_root, position, size, label, () =>
+        VRButton3D button = S.Button(_root, position, size, shape, label, icon ?? S.IconFor(label), () =>
         {
             Debug.Log("[DCGO VR] Menu button: " + label);
 
@@ -515,29 +773,21 @@ public partial class VRMenu : MonoBehaviour
 
             _signature = null;
             _next = 0f;
-        });
-        button.Interactable = spec.Enabled;
+        }, spec.Enabled);
         _dynamic.Add(button.gameObject);
+        Pop(button.transform, ++_cascade, _shown && Time.unscaledTime - _unfoldStart < 0.05f, shape == S.Shape3.Disc ? Vector3.zero : (Vector3?)null);
     }
 
-    VRLabel AddLabel(Vector3 position, Vector2 size, string text, Color plate)
+    VRLabel AddLabel(Vector3 position, Vector2 size, string text, Color color, Color? surface = null)
     {
-        VRLabel label = VRLabel.Create(_root, position, Quaternion.identity, size, text, Color.white, plate);
+        VRLabel label = S.Text(_root, position, size, text, color, surface ?? S.Panel);
         _dynamic.Add(label.gameObject);
         return label;
     }
 
     void AddGlow(Vector3 position, Vector2 size)
     {
-        GameObject glow = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        glow.name = "SelectedGlow";
-        glow.layer = VRRig.Layer;
-        Destroy(glow.GetComponent<Collider>());
-        glow.transform.SetParent(_root, false);
-        glow.transform.localPosition = position + new Vector3(0f, 0f, 0.006f);
-        glow.transform.localScale = new Vector3(size.x + 0.014f, size.y + 0.014f, 0.004f);
-        glow.GetComponent<Renderer>().sharedMaterial = VRMaterials.Unlit(AccentColor);
-        _dynamic.Add(glow);
+        Track(S.Card(_root, "SelectedGlow", position + new Vector3(0f, 0f, 0.006f), new Vector2(size.x + 0.018f, size.y + 0.018f), 0.012f, S.Accent).gameObject);
     }
 
     // Decks as cards (key card picture) with their names under them.
@@ -557,7 +807,7 @@ public partial class VRMenu : MonoBehaviour
 
         if (decks.Count == 0)
         {
-            AddLabel(new Vector3((Left + GridRight) * 0.5f, (gridTop + gridBottom) * 0.5f, 0f), new Vector2(areaW - 0.1f, 0.05f), "No decks yet.", FrameColor);
+            AddLabel(new Vector3((Left + GridRight) * 0.5f, (gridTop + gridBottom) * 0.5f, 0f), new Vector2(areaW - 0.1f, 0.04f), "No decks yet.", S.InkSoft);
         }
 
         for (int i = 0; i < perPage; i++)
@@ -580,6 +830,7 @@ public partial class VRMenu : MonoBehaviour
             });
             _dynamic.Add(card.gameObject);
             LoadSprite(deck.KeyCard, card);
+            Pop(card.transform, ++_cascade, _shown && Time.unscaledTime - _unfoldStart < 0.05f, new Vector3(0f, -0.02f, 0f));
 
             bool selected = deck == _spec.Selected;
 
@@ -588,13 +839,13 @@ public partial class VRMenu : MonoBehaviour
                 AddGlow(position, new Vector2(cardW, cardH));
             }
 
-            Color plate = selected ? SelectedPlate : deck.IsValidDeckData() ? LinePlate : WarningPlate;
-            AddLabel(position + new Vector3(0f, -cardH * 0.5f - 0.02f, 0f), new Vector2(cellW - 0.01f, 0.03f), deck.DeckName, plate);
+            Color ink = selected ? S.AccentDeep : deck.IsValidDeckData() ? S.Ink : S.Danger;
+            AddLabel(position + new Vector3(0f, -cardH * 0.5f - 0.02f, 0f), new Vector2(cellW - 0.01f, 0.026f), deck.DeckName, ink);
         }
 
         if (pages > 1)
         {
-            AddPager(ref _deckPage, pages, gridBottom - 0.035f);
+            AddPager(pages, gridBottom - 0.035f);
         }
     }
 
@@ -616,7 +867,7 @@ public partial class VRMenu : MonoBehaviour
 
         if (cards.Count == 0)
         {
-            AddLabel(new Vector3((Left + GridRight) * 0.5f, (gridTop + gridBottom) * 0.5f, 0f), new Vector2(areaW - 0.1f, 0.05f), "No cards to show.", FrameColor);
+            AddLabel(new Vector3((Left + GridRight) * 0.5f, (gridTop + gridBottom) * 0.5f, 0f), new Vector2(areaW - 0.1f, 0.04f), "No cards to show.", S.InkSoft);
         }
 
         for (int i = 0; i < perPage; i++)
@@ -641,37 +892,39 @@ public partial class VRMenu : MonoBehaviour
             _dynamic.Add(card.gameObject);
             _cardButtons[card] = item.Card;
             LoadSprite(item.Card, card);
+            Pop(card.transform, ++_cascade, _shown && Time.unscaledTime - _unfoldStart < 0.05f, new Vector3(0f, -0.02f, 0f));
 
             if (!string.IsNullOrEmpty(item.Note))
             {
-                AddLabel(position + new Vector3(0f, -cardH * 0.5f - 0.016f, 0f), new Vector2(cellW - 0.01f, 0.026f), item.Note, item.Dim ? WarningPlate : LinePlate);
+                AddLabel(position + new Vector3(0f, -cardH * 0.5f - 0.016f, 0f), new Vector2(cellW - 0.01f, 0.022f), item.Note, item.Dim ? S.Danger : S.InkSoft);
             }
         }
 
         if (pages > 1)
         {
-            AddPager(ref _cardPage, pages, gridBottom - 0.01f);
+            AddPager(pages, gridBottom - 0.01f);
         }
     }
 
-    void AddPager(ref int page, int pages, float y)
+    // Round previous / next buttons with "page / pages" between them.
+    void AddPager(int pages, float y)
     {
         bool deckPager = _spec.Decks != null;
-        int current = page;
-        float x = Left + 0.1f;
+        int current = deckPager ? _deckPage : _cardPage;
+        float x = Left + 0.04f;
         AddButton(new Btn
         {
             Label = "< PREV",
             Enabled = current > 0,
             Act = () => { if (deckPager) { _deckPage--; } else { _cardPage--; } },
-        }, new Vector3(x, y, 0f), new Vector2(0.18f, 0.045f));
-        AddLabel(new Vector3(x + 0.17f, y, 0f), new Vector2(0.13f, 0.04f), $"{current + 1} / {pages}", FrameColor);
+        }, new Vector3(x, y, 0f), new Vector2(0.05f, 0.05f), S.Shape3.Disc, S.Icon.Left);
+        AddLabel(new Vector3(x + 0.1f, y, 0f), new Vector2(0.11f, 0.03f), $"{current + 1} / {pages}", S.InkSoft);
         AddButton(new Btn
         {
             Label = "NEXT >",
             Enabled = current < pages - 1,
             Act = () => { if (deckPager) { _deckPage++; } else { _cardPage++; } },
-        }, new Vector3(x + 0.34f, y, 0f), new Vector2(0.18f, 0.045f));
+        }, new Vector3(x + 0.2f, y, 0f), new Vector2(0.05f, 0.05f), S.Shape3.Disc, S.Icon.Right);
     }
 
     // Compact two-column list in the side area (the deck being edited).
@@ -697,7 +950,7 @@ public partial class VRMenu : MonoBehaviour
             int column = i / perColumn;
             int row = i % perColumn;
             float x = SideCenter - SideWidth * 0.5f + columnW * 0.5f + column * (columnW + 0.01f);
-            AddButton(lines[index], new Vector3(x, y - rowH * 0.5f - row * (rowH + 0.003f), 0f), new Vector2(columnW, rowH));
+            AddButton(lines[index], new Vector3(x, y - rowH * 0.5f - row * (rowH + 0.003f), 0f), new Vector2(columnW, rowH), S.Shape3.Chip);
         }
 
         float bottom = y - perColumn * (rowH + 0.003f);
@@ -705,9 +958,9 @@ public partial class VRMenu : MonoBehaviour
         if (pages > 1)
         {
             int current = _linePage;
-            AddButton(new Btn { Label = "< MORE", Enabled = current > 0, Act = () => _linePage-- }, new Vector3(SideCenter - 0.12f, bottom - 0.022f, 0f), new Vector2(0.16f, 0.036f));
-            AddLabel(new Vector3(SideCenter, bottom - 0.022f, 0f), new Vector2(0.07f, 0.03f), $"{current + 1}/{pages}", FrameColor);
-            AddButton(new Btn { Label = "MORE >", Enabled = current < pages - 1, Act = () => _linePage++ }, new Vector3(SideCenter + 0.12f, bottom - 0.022f, 0f), new Vector2(0.16f, 0.036f));
+            AddButton(new Btn { Label = "< MORE", Enabled = current > 0, Act = () => _linePage-- }, new Vector3(SideCenter - 0.1f, bottom - 0.024f, 0f), new Vector2(0.04f, 0.04f), S.Shape3.Disc, S.Icon.Left);
+            AddLabel(new Vector3(SideCenter, bottom - 0.024f, 0f), new Vector2(0.07f, 0.024f), $"{current + 1}/{pages}", S.InkSoft, S.Well);
+            AddButton(new Btn { Label = "MORE >", Enabled = current < pages - 1, Act = () => _linePage++ }, new Vector3(SideCenter + 0.1f, bottom - 0.024f, 0f), new Vector2(0.04f, 0.04f), S.Shape3.Disc, S.Icon.Right);
             bottom -= 0.05f;
         }
 
@@ -792,8 +1045,8 @@ public partial class VRMenu : MonoBehaviour
 
     CEntity_Base _previewCard;
 
-    // CLASSIC SCREEN / VR MENU toggle: on the panel when a VR page is shown,
-    // under the big flat screen otherwise.
+    // CLASSIC SCREEN / VR MENU switch: in the rail (or under the player card on
+    // the home screen) when a VR page is shown, under the big flat screen otherwise.
     void PlaceToggle()
     {
         bool page = _spec != null && _spec.Page != Page.None && !FlatPage;
@@ -809,13 +1062,12 @@ public partial class VRMenu : MonoBehaviour
             return;
         }
 
-        _toggle.SetLabel(_classic ? "VR MENU" : "CLASSIC SCREEN");
+        _toggleTag.text = _classic ? "VR MENU" : "CLASSIC";
 
         if (!_classic)
         {
-            float height = _spec.Wide ? 0.96f : PanelH;
-            _toggle.transform.SetPositionAndRotation(_root.TransformPoint(new Vector3(_panelW * 0.5f - 0.18f, -height * 0.5f + 0.035f, 0f)), _root.rotation);
-            _toggle.transform.localScale = Vector3.one * _root.localScale.x;
+            _toggle.transform.SetPositionAndRotation(_root.TransformPoint(_toggleLocal), _root.rotation);
+            _toggle.transform.localScale = Vector3.one * _rootScale;
             return;
         }
 
@@ -823,7 +1075,7 @@ public partial class VRMenu : MonoBehaviour
 
         if (screen != null)
         {
-            Vector3 bottom = screen.position - screen.up * (screen.lossyScale.y * 0.5f + 0.06f);
+            Vector3 bottom = screen.position - screen.up * (screen.lossyScale.y * 0.5f + 0.08f);
             _toggle.transform.SetPositionAndRotation(bottom, screen.rotation);
             _toggle.transform.localScale = Vector3.one * 1.4f;
         }

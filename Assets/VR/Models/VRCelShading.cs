@@ -237,6 +237,14 @@ public static class VRCelShading
                     continue; // outline shells are hidden by VRFieldModels.Normalize
                 }
 
+                // Layered eyes (eyelid / expression sheet over iris over the body texture).
+                if (liteBase != null && EyeMaterial(import, gltf, source, liteBase, out Material eye))
+                {
+                    set.Map[source] = eye;
+                    set.Owned.Add(eye);
+                    continue;
+                }
+
                 string gltfAlpha = DSTSGlbJson.Str(gltf, "alphaMode");
                 bool blend = gltfAlpha == "BLEND" || DSTSGlbJson.Str(render, "alpha_mode") == "BLEND";
                 bool clip = !blend && (DSTSGlbJson.Bool(render, "screen_door") || gltfAlpha == "MASK" || role == "mask_alpha");
@@ -308,6 +316,75 @@ public static class VRCelShading
         }
 
         return set;
+    }
+
+    /// <summary>
+    /// DSTS eye materials name an eyelid / expression sheet ("OverlayColorSampler3", bNN, the
+    /// glTF base colour on UV set 2) and usually an iris ("OverlayNormalSampler", pNN, UV set 1)
+    /// on top of the body texture ("DiffuseColor", UV0, which holds the eye whites). glTFast only
+    /// keeps the eyelid sheet (on the wrong UV set) and the screen-door cut made the eyes look
+    /// empty; this builds the toon material in its eye mode with all three layers.
+    /// </summary>
+    static bool EyeMaterial(GltfImport import, object gltf, Material source, Material liteBase, out Material eye)
+    {
+        eye = null;
+        Dictionary<string, object> dsts = DSTSGlbJson.Obj(DSTSGlbJson.Obj(gltf, "extras"), "dsts");
+        Dictionary<string, object> indices = DSTSGlbJson.Obj(dsts, "texture_indices");
+        Dictionary<string, object> slots = DSTSGlbJson.Obj(dsts, "texture_slots");
+
+        if (indices == null || !DSTSGlbJson.Has(indices, "OverlayColorSampler3"))
+        {
+            return false;
+        }
+
+        Texture2D Get(string slot) => DSTSGlbJson.Has(indices, slot) ? TextureAt(import, (int)DSTSGlbJson.Num(indices, slot, -1)) : null;
+        Texture2D lid = Get("OverlayColorSampler3");
+        Texture2D body = Get("DiffuseColor");
+
+        if (lid == null || body == null)
+        {
+            return false;
+        }
+
+        // The iris slot is a pupil texture ("...p01") in Digimon files; anything else there is a normal map.
+        string irisName = DSTSGlbJson.Str(slots, "OverlayNormalSampler", "");
+        Texture2D iris = irisName.Length > 2 && irisName.Substring(irisName.Length - 3, 1) == "p" ? Get("OverlayNormalSampler") : null;
+        object baseTexture = DSTSGlbJson.Obj(DSTSGlbJson.Obj(gltf, "pbrMetallicRoughness"), "baseColorTexture");
+        int lidUV = (int)DSTSGlbJson.Num(baseTexture, "texCoord", 2);
+
+        eye = new Material(liteBase) { name = source.name + " (DSTS eye)" };
+        eye.EnableKeyword("_DSTS_EYE");
+        SetTexture(eye, "_BaseMap", import, (int)DSTSGlbJson.Num(indices, "DiffuseColor", -1), body);
+        SetTexture(eye, "_LidMap", import, (int)DSTSGlbJson.Num(indices, "OverlayColorSampler3", -1), lid);
+
+        if (iris != null)
+        {
+            SetTexture(eye, "_IrisMap", import, (int)DSTSGlbJson.Num(indices, "OverlayNormalSampler", -1), iris);
+            eye.SetFloat("_IrisOn", 1f);
+        }
+        else
+        {
+            eye.SetFloat("_IrisOn", 0f);
+        }
+
+        eye.SetFloat("_LidUV", lidUV);
+        eye.SetColor("_BaseColor", Color.white);
+        bool doubleSided = DSTSGlbJson.Bool(gltf, "doubleSided") || DSTSGlbJson.Str(DSTSGlbJson.Obj(DSTSGlbJson.Obj(gltf, "extras"), "dsts_render"), "cull") == "none";
+        eye.SetFloat("_Cull", doubleSided ? 0f : 2f);
+        return true;
+    }
+
+    static Texture2D TextureAt(GltfImport import, int index) => index >= 0 && index < import.TextureCount ? import.GetTexture(index) : null;
+
+    static void SetTexture(Material material, string property, GltfImport import, int index, Texture2D texture)
+    {
+        material.SetTexture(property, texture);
+
+        if (index >= 0 && import.IsTextureYFlipped(index))
+        {
+            material.SetTextureScale(property, new Vector2(1f, -1f));
+            material.SetTextureOffset(property, new Vector2(0f, 1f));
+        }
     }
 
     /// <summary>The game "screen-door" discards pixels by texture alpha (e.g. the eye white has a hole

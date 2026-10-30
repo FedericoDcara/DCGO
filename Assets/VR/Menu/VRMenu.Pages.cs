@@ -370,11 +370,11 @@ public partial class VRMenu
         }
 
         bool valid = deck.IsValidDeckData();
-        text.Append(valid ? "<color=#7CFF9A>Ready to play</color>" : "<color=#FF7A7A>Not playable yet (50 cards + up to 5 eggs).</color>");
+        text.Append(valid ? "<color=#1E8F4A>Ready to play</color>" : "<color=#C83A3A>Not playable yet (50 cards + up to 5 eggs).</color>");
 
         if (invalid != null && invalid.activeInHierarchy && valid)
         {
-            text.Append("\n<color=#FF7A7A>Not allowed here.</color>");
+            text.Append("\n<color=#C83A3A>Not allowed here.</color>");
         }
 
         return text.ToString();
@@ -615,7 +615,7 @@ public partial class VRMenu
 
         // Right side: the deck itself.
         spec.Side = "<b>" + deck.DeckName + "</b>\nCards: " + (editor.DeckCountText != null ? editor.DeckCountText.text : "") +
-                    (deck.IsValidDeckData() ? "   <color=#7CFF9A>playable</color>" : "   <color=#FFB070>not playable yet</color>");
+                    (deck.IsValidDeckData() ? "   <color=#1E8F4A>playable</color>" : "   <color=#C9711C>not playable yet</color>");
         spec.Lines = new List<Btn>();
 
         foreach (IGrouping<int, CEntity_Base> group in deck.DigitamaDeckCards().Concat(deck.DeckCards()).GroupBy(c => c.CardIndex))

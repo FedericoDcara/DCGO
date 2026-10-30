@@ -121,6 +121,15 @@ public static class VRModelLibrary
         string en = card.BaseENGCardNameFromEntity;
         yield return jp;
         yield return en;
+
+        // "Rosemon: Burst Mode" (card) vs "Rosemon BM" (model), "Imperialdramon: Fighter Mode"
+        // vs "Imperialdramon FM", "Omnimon X" vs "Omnimon (X Antibody)"... Tried before the
+        // bracket strip below, which would fall back to the plain form's model.
+        foreach (string variant in ModeVariants(en))
+        {
+            yield return variant;
+        }
+
         yield return StripBrackets(jp);
         yield return StripBrackets(en);
 
@@ -128,6 +137,55 @@ public static class VRModelLibrary
         if (!string.IsNullOrEmpty(en) && en.StartsWith("Black", StringComparison.OrdinalIgnoreCase) && en.Length > 5)
         {
             yield return en.Substring(5) + " (Black)";
+        }
+    }
+
+    static IEnumerable<string> ModeVariants(string en)
+    {
+        if (string.IsNullOrEmpty(en))
+        {
+            yield break;
+        }
+
+        // Split "Base: Suffix", "Base (Suffix)" or "Base - Suffix".
+        int cut = en.IndexOfAny(new[] { ':', '(', '（', '：' });
+        int dash = en.IndexOf(" - ", StringComparison.Ordinal);
+
+        if (cut < 0 || (dash > 0 && dash < cut))
+        {
+            cut = dash;
+        }
+
+        if (cut > 0)
+        {
+            string name = en.Substring(0, cut).Trim();
+            string suffix = en.Substring(cut + (en[cut] == ' ' ? 3 : 1)).Trim(' ', ')', '）');
+
+            if (suffix.EndsWith("Mode", StringComparison.OrdinalIgnoreCase))
+            {
+                // "Burst Mode" -> "BM"
+                StringBuilder initials = new StringBuilder();
+
+                foreach (string word in suffix.Split(new[] { ' ', '-' }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    initials.Append(char.ToUpperInvariant(word[0]));
+                }
+
+                yield return name + " " + initials;
+            }
+
+            yield return name + " (" + suffix + ")";
+            yield return name + ": " + suffix;
+        }
+
+        // "Omnimon X" / "Omnimon X-Antibody" -> "Omnimon (X Antibody)"
+        if (en.EndsWith(" X", StringComparison.Ordinal))
+        {
+            yield return en.Substring(0, en.Length - 2) + " (X Antibody)";
+        }
+        else if (en.EndsWith("X-Antibody", StringComparison.OrdinalIgnoreCase) || en.EndsWith("X Antibody", StringComparison.OrdinalIgnoreCase))
+        {
+            yield return en.Substring(0, en.Length - "X-Antibody".Length).Trim(' ', '(', ':') + " (X Antibody)";
         }
     }
 

@@ -186,10 +186,15 @@ public class VRSession : MonoBehaviour
         VROpponentAvatar.Create(transform, Rig.ArenaAnchor, Rig.Camera.transform);
         VRSecurityBattle.Create(transform, Rig.Camera.transform);
         VRArenaOptions.Create(transform, Rig.ArenaAnchor);
+        VRDualOption.Create(transform, Rig.ArenaAnchor);
         VRBreedingDisplay.Create(transform, Rig.ArenaAnchor);
         AvatarCams = VRAvatarCams.Create(transform);
         VRRevealPanel.Create(transform, Rig.Camera.transform);
         VRDuelEnvironment.Create(transform, Rig.ArenaAnchor);
+        VRMenuWorld.Create(Rig.transform, Rig);
+        VRTransition.Create(Rig.transform, Rig);
+        VRResultPanel.Create(transform, Rig);
+        VRSecurityTowers.Create(transform, Rig.ArenaAnchor);
         Perf = VRPerf.Create(transform, Rig);
         VRPerf.ApplyRenderScale();
         Rig.ViewChanged += ApplyView;

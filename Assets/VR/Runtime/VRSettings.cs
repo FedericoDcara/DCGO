@@ -51,6 +51,18 @@ public static class VRSettings
 
     /// <summary>Digital World surroundings in duels (grid floor, horizon, data waterfalls).</summary>
     public static bool DuelEnvironment { get => Get("DuelEnvironment", true); set => Set("DuelEnvironment", value); }
+    /// <summary>Floating island (with walking Digimon and Tamers) around you on the main menu.</summary>
+    public static bool MenuWorld { get => Get("MenuWorld", true); set => Set("MenuWorld", value); }
+    /// <summary>"Digitize" tunnel between the menu and a duel.</summary>
+    public static bool Transition { get => Get("Transition", true); set => Set("Transition", value); }
+
+    /// <summary>Arena layout: 0 = Classic (two rows), 1 = Duel Ring (Battle Areas like the playmat,
+    /// Breeding Areas, security towers, battle line).</summary>
+    public static int ArenaLayout
+    {
+        get => PlayerPrefs.GetInt("DCGO_VR_ArenaLayout", 0);
+        set => PlayerPrefs.SetInt("DCGO_VR_ArenaLayout", value);
+    }
 
     public static bool PerfStats { get => Get("PerfStats", false); set => Set("PerfStats", value); }
     /// <summary>Full Debug.Log output with stack traces (off = faster: only warnings / errors, no stack traces).</summary>

@@ -16,6 +16,10 @@ public class VRSettingsPanel : MonoBehaviour
     VRModelStudio _studio;
     readonly List<VRButton3D> _plates = new List<VRButton3D>();
     readonly List<Func<string>> _labels = new List<Func<string>>();
+    float _surrenderUntil;
+
+    // In a duel that has not ended yet (surrender is possible).
+    static bool InDuel => GManager.instance != null && GManager.instance.turnStateMachine != null && !GManager.instance.turnStateMachine.endGame;
 
     public bool IsOpen => gameObject.activeSelf;
 
@@ -42,6 +46,26 @@ public class VRSettingsPanel : MonoBehaviour
         _frame = frame.transform;
 
         _title = VRLabel.Create(transform, Vector3.zero, Quaternion.identity, new Vector2(0.3f, 0.04f), "VR SETTINGS", new Color(0.55f, 0.95f, 1f), new Color(0.05f, 0.09f, 0.14f));
+
+        // Surrender, like the flat in-game options (Options > Surrender), with a tap-again confirm.
+        Add(() => !InDuel ? "Surrender (only during a duel)" : Time.unscaledTime < _surrenderUntil ? ">> Tap again to SURRENDER <<" : "Surrender this duel...", () =>
+        {
+            if (!InDuel)
+            {
+                return;
+            }
+
+            if (Time.unscaledTime < _surrenderUntil)
+            {
+                _surrenderUntil = 0f;
+                Debug.Log("[DCGO VR] Surrender confirmed");
+                GManager.instance.OnClickSurrenderButton(); // same handler as the flat Surrender button
+                Close();
+                return;
+            }
+
+            _surrenderUntil = Time.unscaledTime + 4f;
+        });
 
         Add(() => "Field hologram: " + (VRSettings.HoloBoard ? "On" : "Off"), () => VRSettings.HoloBoard = !VRSettings.HoloBoard);
         Add(() => "Debug logs: " + (VRSettings.VerboseLogs ? "On (slower)" : "Off"), () => VRPerformance.SetVerboseLogs(!VRSettings.VerboseLogs));
@@ -96,6 +120,13 @@ public class VRSettingsPanel : MonoBehaviour
             }
         });
         Add(() => "Duel background: " + (VRSettings.DuelEnvironment ? "Digital World" : "Off"), () => VRSettings.DuelEnvironment = !VRSettings.DuelEnvironment);
+        Add(() => "Menu background: " + (VRSettings.MenuWorld ? "Floating island" : "Off"), () => VRSettings.MenuWorld = !VRSettings.MenuWorld);
+        Add(() => "Duel transition: " + (VRSettings.Transition ? "Digitize tunnel" : "Off"), () => VRSettings.Transition = !VRSettings.Transition);
+        Add(() => "Arena layout: " + (VRSettings.ArenaLayout == 1 ? "Duel Ring" : "Classic"), () =>
+        {
+            VRSettings.ArenaLayout = VRSettings.ArenaLayout == 1 ? 0 : 1;
+            VRSession.Instance?.Board?.RefreshModels(); // rebuild figures (Breeding Area ones appear / leave)
+        });
         Add(() => "Arena view: " + (VRSettings.ArenaOverview ? "Overview (from above)" : "Ground level"), () =>
         {
             VRSettings.ArenaOverview = !VRSettings.ArenaOverview;
@@ -197,6 +228,20 @@ public class VRSettingsPanel : MonoBehaviour
         Refresh();
     }
 
-    public void Close() => gameObject.SetActive(false);
+    public void Close()
+    {
+        _surrenderUntil = 0f;
+        gameObject.SetActive(false);
+    }
+
+    void Update()
+    {
+        // The surrender confirmation runs out after a few seconds.
+        if (_surrenderUntil > 0f && Time.unscaledTime >= _surrenderUntil)
+        {
+            _surrenderUntil = 0f;
+            Refresh();
+        }
+    }
 }
 #endif

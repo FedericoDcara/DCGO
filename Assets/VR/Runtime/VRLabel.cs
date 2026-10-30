@@ -370,12 +370,33 @@ public class VRLabelAtlas : MonoBehaviour
         }
     }
 
+    static Sprite _whiteSprite;
+
+    static Sprite WhiteSprite
+    {
+        get
+        {
+            if (_whiteSprite == null)
+            {
+                Texture2D white = Texture2D.whiteTexture;
+                _whiteSprite = Sprite.Create(white, new Rect(0f, 0f, white.width, white.height), new Vector2(0.5f, 0.5f), 100f, 0, SpriteMeshType.FullRect);
+                _whiteSprite.name = "DCGOVR_LabelPlate";
+            }
+
+            return _whiteSprite;
+        }
+    }
+
     public void CreateEntry(out Image plate, out TextMeshProUGUI text)
     {
         GameObject plateGo = new GameObject("Plate", typeof(RectTransform)) { layer = AtlasLayer };
         plateGo.transform.SetParent(_canvas, false);
         plate = plateGo.AddComponent<Image>();
         plate.raycastTarget = false;
+        // A real (plain white) sprite: editor tools that recolour sprite-less UI images
+        // (Assets/Editor/UIDebugTheme in Play mode) must leave label plates alone.
+        plate.sprite = WhiteSprite;
+        plate.type = Image.Type.Simple;
 
         GameObject textGo = new GameObject("Text", typeof(RectTransform)) { layer = AtlasLayer };
         textGo.transform.SetParent(plateGo.transform, false);

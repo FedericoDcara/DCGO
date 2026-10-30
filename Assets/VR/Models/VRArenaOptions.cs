@@ -22,6 +22,10 @@ public class VRArenaOptions : MonoBehaviour
         public bool Seen;
     }
 
+    /// <summary>Options shown per side (the Duel Ring puts them in the back part of the Battle Area).</summary>
+    public static int YourCount;
+    public static int TheirCount;
+
     Transform _arena;
     readonly Dictionary<CardSource, Shown> _shown = new Dictionary<CardSource, Shown>();
     readonly List<CardSource> _gone = new List<CardSource>();
@@ -50,10 +54,41 @@ public class VRArenaOptions : MonoBehaviour
             shown.Seen = false;
         }
 
+        if (!show)
+        {
+            YourCount = 0;
+            TheirCount = 0;
+        }
+
         if (show)
         {
             Collect(context.You, _yours);
             Collect(context.Opponent, _theirs);
+            YourCount = _yours.Count;
+            TheirCount = _theirs.Count;
+
+            if (VRFieldModels.RingLayout)
+            {
+                // Duel Ring: lying in the back part of each Battle Area, after the Tamers.
+                for (int side = 0; side < 2; side++)
+                {
+                    bool yours = side == 0;
+                    List<KeyValuePair<CardSource, Permanent>> list = yours ? _yours : _theirs;
+                    int tamers = yours ? VRFieldModels.YourTamers : VRFieldModels.TheirTamers;
+
+                    for (int i = 0; i < list.Count; i++)
+                    {
+                        Shown shown = Get(list[i].Key, list[i].Value, yours);
+                        shown.Root.SetParent(_arena, false);
+                        shown.Root.localPosition = VRFieldModels.RingBackSlot(yours, tamers + i, tamers + list.Count) + new Vector3(0f, 0.015f, 0f);
+                        shown.Root.localRotation = Quaternion.Euler(90f, 0f, 0f); // flat, bottom edge towards you
+                        shown.Root.localScale = Vector3.one * (yours ? 1f : 1.3f);
+                    }
+                }
+
+                _yours.Clear();
+                _theirs.Clear(); // placed: the Classic placement below has nothing left to do
+            }
 
             for (int i = 0; i < _yours.Count; i++)
             {

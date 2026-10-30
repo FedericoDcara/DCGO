@@ -26,6 +26,23 @@ public class VRButton3D : MonoBehaviour
 
     public bool Interactable { get; set; } = true;
 
+    /// <summary>
+    /// Custom look (menu buttons): called every frame with the smoothed hover
+    /// amount (0..1), whether it is being pressed, and whether it is enabled.
+    /// When set, the built-in plate/round visuals are skipped.
+    /// </summary>
+    public Action<float, bool, bool> Visual;
+    float _hoverT;
+
+    /// <summary>A button with no visuals of its own (a box collider of this size); give it a <see cref="Visual"/>.</summary>
+    public static VRButton3D CreateCustom(Transform parent, Vector3 localPosition, Vector2 size, string label, Action onPress)
+    {
+        VRButton3D button = CreateRoot(parent, localPosition, label, onPress);
+        BoxCollider collider = button.gameObject.AddComponent<BoxCollider>();
+        collider.size = new Vector3(size.x, size.y, 0.02f);
+        return button;
+    }
+
     /// <summary>Round push button lying flat (cap facing up).</summary>
     public static VRButton3D Create(Transform parent, Vector3 localPosition, string label, Action onPress)
     {
@@ -149,6 +166,15 @@ public class VRButton3D : MonoBehaviour
     void Update()
     {
         bool pressed = Time.unscaledTime < _pressedUntil;
+
+        if (Visual != null)
+        {
+            bool hot = Interactable && (_hovered || Time.unscaledTime - LastHovered < 0.06f);
+            _hoverT = Mathf.MoveTowards(_hoverT, hot ? 1f : 0f, Time.unscaledDeltaTime * 9f);
+            Visual(_hoverT, pressed, Interactable);
+            _hovered = false;
+            return;
+        }
 
         if (_cardStyle)
         {

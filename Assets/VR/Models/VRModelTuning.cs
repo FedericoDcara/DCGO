@@ -8,7 +8,7 @@ using UnityEngine;
 
 // === DCGO-CUSTOM:vr ===
 // Per-model size corrections, tuned in game (VR settings > Tune 3D model sizes).
-// Saved next to the models in _DSTSModels/tuning.csv ("file,scale"), so they stay
+// Saved next to the models in _DSTSModels/tuning-v2.csv ("file,scale"), so they stay
 // with your model folder and are never committed. Falls back to PlayerPrefs.
 public static class VRModelTuning
 {
@@ -77,7 +77,9 @@ public static class VRModelTuning
         get
         {
             string root = VRModelLibrary.Root;
-            return root != null ? Path.Combine(root, "tuning.csv") : null;
+            // v2: sizes are now measured on the idle pose, so the old hand fixes
+            // (tuning.csv, made for the old measuring) no longer apply. The old file is kept.
+            return root != null ? Path.Combine(root, "tuning-v2.csv") : null;
         }
     }
 
@@ -93,7 +95,7 @@ public static class VRModelTuning
         try
         {
             string path = FilePath;
-            string text = path != null && File.Exists(path) ? File.ReadAllText(path) : PlayerPrefs.GetString("DCGO_VR_ModelTuning", "");
+            string text = path != null && File.Exists(path) ? File.ReadAllText(path) : PlayerPrefs.GetString("DCGO_VR_ModelTuning_v2", "");
 
             foreach (string line in text.Split('\n'))
             {
@@ -130,13 +132,13 @@ public static class VRModelTuning
             }
             else
             {
-                PlayerPrefs.SetString("DCGO_VR_ModelTuning", text.ToString());
+                PlayerPrefs.SetString("DCGO_VR_ModelTuning_v2", text.ToString());
             }
         }
         catch (Exception e)
         {
             Debug.LogWarning("[DCGO VR] Could not save model tuning: " + e.Message);
-            PlayerPrefs.SetString("DCGO_VR_ModelTuning", text.ToString());
+            PlayerPrefs.SetString("DCGO_VR_ModelTuning_v2", text.ToString());
         }
     }
 }

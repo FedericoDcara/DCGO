@@ -73,6 +73,7 @@ public class VRFieldModels
         public Renderer Glow;       // coloured frame around the card
         public BoxCollider Hit;     // laser target (VRArenaTarget)
         public float FigureHeight = 1f; // figure height at body scale 1
+        public bool Breeding;       // in the Breeding Area (Duel Ring layout only)
         public Transform Aura;      // effect-activated circle + aura column
         public float AuraLevel;
         public Renderer Pillar;
@@ -156,7 +157,10 @@ public class VRFieldModels
             return;
         }
 
-        if (!(permanent.IsDigimon || permanent.IsTamer) || (permanent.PermanentFrame != null && !permanent.PermanentFrame.IsBattleAreaFrame()))
+        bool breeding = permanent.PermanentFrame != null && !permanent.PermanentFrame.IsBattleAreaFrame();
+
+        // The Duel Ring also shows the Breeding Area; the Classic layout only the Battle Area.
+        if (!(permanent.IsDigimon || permanent.IsTamer) || (breeding && !RingLayout))
         {
             return;
         }
@@ -198,6 +202,7 @@ public class VRFieldModels
         entry.Suspended = suspended;
         entry.Tamer = permanent.IsTamer;
         entry.Yours = yours;
+        entry.Breeding = breeding;
     }
 
     readonly List<Entry> _line = new List<Entry>();
@@ -209,6 +214,20 @@ public class VRFieldModels
     {
         EnsureStage();
 
+        if (RingLayout)
+        {
+            LayoutRing();
+        }
+        else
+        {
+            LayoutClassic();
+        }
+
+        PlaceFigures();
+    }
+
+    void LayoutClassic()
+    {
         for (int pass = 0; pass < 4; pass++)
         {
             bool yours = pass < 2;
@@ -268,6 +287,10 @@ public class VRFieldModels
             }
         }
 
+    }
+
+    void PlaceFigures()
+    {
         foreach (Entry entry in _entries.Values)
         {
             if (entry.Root == null)
@@ -285,7 +308,9 @@ public class VRFieldModels
             float age = Time.unscaledTime - entry.Spawned;
             float grow = Mathf.SmoothStep(0f, 1f, age / GrowTime);
             float boost = entry.Yours ? 1f : TheirBoost;
-            float fit = entry.Width > 0.01f ? Mathf.Min(1f, entry.Spacing * 0.92f / (entry.Width * boost)) : 1f;
+            // Crowded rows trim very wide figures a little (at most 20 %), so the same Digimon
+            // keeps (almost) the same size whoever stands next to it.
+            float fit = entry.Width > 0.01f ? Mathf.Clamp(entry.Spacing * 1.05f / (entry.Width * boost), 0.8f, 1f) : 1f;
             // Hand tuning (debug panel) wins over the automatic fit.
             float tune = entry.Model != null ? VRModelTuning.Get(VRModelTuning.KeyOf(entry.Path)) : 1f;
             entry.Body.localScale = Vector3.one * Mathf.Max(0.001f, grow * fit * boost * tune);
@@ -545,6 +570,182 @@ public class VRFieldModels
         VRCapture.Capture("arena-overview", above, _arena.rotation * Quaternion.Euler(42f, 0f, 0f), 75f);
     }
 
+    // ---------------------------------------------------------------- Duel Ring layout
+    // One Battle Area per player laid out like the playmat: Digimon in the front part, Tamers
+    // and Options (delay) in the back part; the Breeding Area beside it, a security tower in
+    // the opposite corner, a glowing battle line in the middle. The opponent's side rises on
+    // a gentle ramp so their figures stand out. Distances are from your seat (metres).
+
+    public static bool RingLayout => VRSettings.ArenaLayout == 1;
+
+    const float RingHalfWidth = 5.9f;     // Battle Area half width
+    const float RingStep = 1.5f;          // slot spacing
+    const float RingYourFront = 4.25f;
+    const float RingYourBack = 2.85f;
+    const float RingLine = 5.8f;
+    const float RingTheirFront = 7.35f;
+    const float RingTheirBack = 8.65f;
+    const float RingRampStart = 6.5f;
+    const float RingRampSlope = 0.27f;    // ~15 degrees
+    const float RingCornerX = 6.75f;
+
+    /// <summary>Tamers per side in the last layout (Options share the back part after them).</summary>
+    public static int YourTamers;
+    public static int TheirTamers;
+
+    /// <summary>Floor height of the Duel Ring at depth z (the opponent's side rises).</summary>
+    static float RingFloor(bool yours, float z) => yours ? 0f : Mathf.Max(0f, (z - RingRampStart) * RingRampSlope);
+
+    // The opponent's side is a ramp: things on it sit a little higher so flat cards never sink into the slope.
+    static Vector3 RingSpot(bool yours, float x, float z) => OnRow(yours ? x : -x, z, RingFloor(yours, z) + (yours ? 0f : 0.12f));
+
+    /// <summary>Back part of a Battle Area: Tamers first, then Options (index counts both).</summary>
+    public static Vector3 RingBackSlot(bool yours, int index, int count)
+    {
+        float step = Mathf.Min(RingStep, RingHalfWidth * 2f / Mathf.Max(1, count));
+        float x = (index - (count - 1) * 0.5f) * step;
+        return RingSpot(yours, x, yours ? RingYourBack : RingTheirBack);
+    }
+
+    /// <summary>Breeding Area pad: your left corner, the opponent's far right (their left).</summary>
+    public static Vector3 RingBreedingSpot(bool yours) => RingSpot(yours, -RingCornerX, yours ? RingYourBack + 0.4f : RingTheirBack - 0.1f);
+
+    /// <summary>Security tower: your right corner, the opponent's far left (their right).</summary>
+    public static Vector3 RingTowerSpot(bool yours) => RingSpot(yours, RingCornerX, yours ? RingYourBack + 0.4f : RingTheirBack - 0.1f);
+
+    /// <summary>Where the opponent avatar stands in the Duel Ring: behind their Battle Area.</summary>
+    public static Vector3 RingAvatarSpot => OnRow(0f, RingTheirBack + 3f, 0f);
+
+    void LayoutRing()
+    {
+        for (int side = 0; side < 2; side++)
+        {
+            bool yours = side == 0;
+
+            // Front part: Digimon, in board order (mirrored for the opponent, as seen from across).
+            _line.Clear();
+
+            foreach (Entry entry in _entries.Values)
+            {
+                if (entry.Root != null && entry.Yours == yours && !entry.Tamer && !entry.Breeding)
+                {
+                    _line.Add(entry);
+                }
+            }
+
+            _line.Sort((a, b) => a.BoardX.CompareTo(b.BoardX));
+            int n = _line.Count;
+            float step = Mathf.Min(RingStep, RingHalfWidth * 2f / Mathf.Max(1, n));
+
+            for (int i = 0; i < n; i++)
+            {
+                float x = (i - (n - 1) * 0.5f) * step;
+                _line[i].Target = RingSpot(yours, x, yours ? RingYourFront : RingTheirFront);
+                _line[i].Spacing = step;
+            }
+
+            // Back part: Tamers (Options follow them, placed by VRArenaOptions).
+            _line.Clear();
+
+            foreach (Entry entry in _entries.Values)
+            {
+                if (entry.Root != null && entry.Yours == yours && entry.Tamer && !entry.Breeding)
+                {
+                    _line.Add(entry);
+                }
+            }
+
+            _line.Sort((a, b) => a.BoardX.CompareTo(b.BoardX));
+            int tamers = _line.Count;
+            int count = tamers + (yours ? VRArenaOptions.YourCount : VRArenaOptions.TheirCount);
+
+            if (yours)
+            {
+                YourTamers = tamers;
+            }
+            else
+            {
+                TheirTamers = tamers;
+            }
+
+            for (int i = 0; i < tamers; i++)
+            {
+                _line[i].Target = RingBackSlot(yours, i, count);
+                _line[i].Spacing = Mathf.Min(RingStep, RingHalfWidth * 2f / Mathf.Max(1, count));
+            }
+
+            // Breeding Area: one at a time in the rules, side by side if ever more.
+            int b = 0;
+
+            foreach (Entry entry in _entries.Values)
+            {
+                if (entry.Root != null && entry.Yours == yours && entry.Breeding)
+                {
+                    entry.Target = RingBreedingSpot(yours) + new Vector3(b * 0.9f, 0f, 0f);
+                    entry.Spacing = 1.2f;
+                    b++;
+                }
+            }
+        }
+    }
+
+    Transform _ringStage;
+
+    // Stage pieces of the Duel Ring: the two Battle Areas (theirs tilted up), Breeding pads,
+    // security tower bases and the battle line.
+    static Transform CreateRingStage(Transform arena)
+    {
+        Transform stage = new GameObject("DuelRingStage") { layer = VRRig.Layer }.transform;
+        stage.SetParent(arena, false);
+        Color yourFill = new Color(0.04f, 0.09f, 0.15f);
+        Color theirFill = new Color(0.13f, 0.05f, 0.07f);
+        float yourDepth = (RingYourFront - RingYourBack) + 1.8f;
+        float yourCentre = (RingYourFront + RingYourBack) * 0.5f;
+        float theirDepth = (RingTheirBack - RingTheirFront) + 1.8f;
+        float theirCentre = (RingTheirBack + RingTheirFront) * 0.5f;
+        float tilt = -Mathf.Atan(RingRampSlope) * Mathf.Rad2Deg;
+
+        // Your Battle Area: a mat with a glowing frame.
+        StageBox(stage, OnRow(0f, yourCentre, -0.03f), new Vector3(RingHalfWidth * 2f, 0.05f, yourDepth), yourFill, Quaternion.identity);
+        Frame(stage, OnRow(0f, yourCentre, 0.001f), RingHalfWidth * 2f, yourDepth, YourColor, Quaternion.identity);
+
+        // Theirs: tilted up the ramp.
+        Vector3 theirMid = OnRow(0f, theirCentre, RingFloor(false, theirCentre) - 0.03f);
+        Quaternion ramp = Quaternion.Euler(tilt, 0f, 0f);
+        StageBox(stage, theirMid, new Vector3(RingHalfWidth * 2f, 0.05f, theirDepth / Mathf.Cos(Mathf.Atan(RingRampSlope))), theirFill, ramp);
+        Frame(stage, theirMid + new Vector3(0f, 0.031f, 0f), RingHalfWidth * 2f, theirDepth / Mathf.Cos(Mathf.Atan(RingRampSlope)), TheirColor, ramp);
+
+        // Battle line across the middle.
+        StageBox(stage, OnRow(0f, RingLine, 0.005f), new Vector3(RingHalfWidth * 2f + 2.6f, 0.012f, 0.06f), new Color(0.85f, 1f, 1f), Quaternion.identity);
+
+        // Breeding pads (green) and security tower bases (gold).
+        Color breed = new Color(0.3f, 1f, 0.6f);
+        Color gold = new Color(1f, 0.8f, 0.3f);
+
+        for (int side = 0; side < 2; side++)
+        {
+            bool yours = side == 0;
+            Vector3 pad = RingBreedingSpot(yours);
+            StageBox(stage, pad + new Vector3(0f, -0.02f, 0f), new Vector3(1.3f, 0.04f, 1.3f), new Color(0.04f, 0.14f, 0.1f), Quaternion.identity);
+            Frame(stage, pad + new Vector3(0f, 0.002f, 0f), 1.3f, 1.3f, breed, Quaternion.identity);
+            Vector3 tower = RingTowerSpot(yours);
+            StageBox(stage, tower + new Vector3(0f, -0.02f, 0f), new Vector3(1.3f, 0.04f, 1.3f), new Color(0.14f, 0.1f, 0.04f), Quaternion.identity);
+            Frame(stage, tower + new Vector3(0f, 0.002f, 0f), 1.3f, 1.3f, gold, Quaternion.identity);
+        }
+
+        return stage;
+    }
+
+    // Thin glowing rectangle outline lying on a surface.
+    static void Frame(Transform stage, Vector3 centre, float width, float depth, Color color, Quaternion rotation)
+    {
+        const float t = 0.04f;
+        StageBox(stage, centre + rotation * new Vector3(0f, 0f, -depth * 0.5f), new Vector3(width, 0.008f, t), color, rotation);
+        StageBox(stage, centre + rotation * new Vector3(0f, 0f, depth * 0.5f), new Vector3(width, 0.008f, t), color, rotation);
+        StageBox(stage, centre + rotation * new Vector3(-width * 0.5f, 0f, 0f), new Vector3(t, 0.008f, depth), color, rotation);
+        StageBox(stage, centre + rotation * new Vector3(width * 0.5f, 0f, 0f), new Vector3(t, 0.008f, depth), color, rotation);
+    }
+
     static Vector3 Seat => new Vector3(0f, 0f, -SeatToStage - (VRSettings.ArenaDistance - 2.4f));
 
     // Point on a straight row in front of the seat (x = left/right, z = ahead).
@@ -637,16 +838,27 @@ public class VRFieldModels
     // A thin dark stage with a blue (your) and red (opponent) edge under the figures.
     void EnsureStage()
     {
-        bool show = _entries.Count > 0;
+        bool show = _entries.Count > 0 || VRArenaOptions.YourCount + VRArenaOptions.TheirCount > 0;
+        bool ring = RingLayout;
 
-        if (_stage == null && show)
+        if (_stage == null && show && !ring)
         {
             _stage = CreateStage(_arena);
         }
 
-        if (_stage != null && _stage.gameObject.activeSelf != show)
+        if (_ringStage == null && show && ring)
         {
-            _stage.gameObject.SetActive(show);
+            _ringStage = CreateRingStage(_arena);
+        }
+
+        if (_stage != null && _stage.gameObject.activeSelf != (show && !ring))
+        {
+            _stage.gameObject.SetActive(show && !ring);
+        }
+
+        if (_ringStage != null && _ringStage.gameObject.activeSelf != (show && ring))
+        {
+            _ringStage.gameObject.SetActive(show && ring);
         }
     }
 
@@ -662,7 +874,7 @@ public class VRFieldModels
 
     /// <summary>Arena spot for a preview figure: in your row beside the lane, or the middle of the opponent's row.</summary>
     /// <summary>Where the opponent avatar stands: centred, behind the opponent's mat (y = 0, set by the avatar).</summary>
-    public static Vector3 OpponentAvatarSpot => OnRow(0f, TheirRowZ + 3.2f, 0f);
+    public static Vector3 OpponentAvatarSpot => RingLayout ? RingAvatarSpot : OnRow(0f, TheirRowZ + 3.2f, 0f);
 
     /// <summary>Height of the opponent's mat above yours (arena space).</summary>
     public static float OpponentFloor => TheirElevation;
@@ -953,15 +1165,24 @@ public class VRFieldModels
         }
     }
 
+    // Measured shape per model (same meshes = same file): bounds in the model's own
+    // space at scale 1, taken in its idle pose from the real (skinned) vertices.
+    static readonly Dictionary<string, Bounds> _shapes = new Dictionary<string, Bounds>();
+
     /// <summary>Scales a freshly loaded model to the target height (capped for very wide
-    /// models), hides outline shells and puts it on the VR layer. Returns the scale;
-    /// <paramref name="width"/> is the unscaled width. Shared with the model studio.</summary>
+    /// models), hides outline shells and puts it on the VR layer, and moves it so its feet
+    /// stand centred on the parent's origin. Returns the scale; <paramref name="width"/> is
+    /// the unscaled width. Shared by the field, studio, avatars, breeding and security.
+    ///
+    /// The size comes from the model's idle pose (first frame of its _bn01 clip) measured on
+    /// the actual vertices, not from the file's rest pose or Unity's rough skinned bounds:
+    /// T-poses, crouched rest poses and offset bounds used to make the same kind of model
+    /// come out bigger, smaller, floating or beside its card.</summary>
     public static float Normalize(Transform holder, float target, out float width)
     {
         holder.localScale = Vector3.one;
         holder.localPosition = Vector3.zero;
-        Bounds bounds = new Bounds();
-        bool first = true;
+        List<Renderer> measured = new List<Renderer>();
 
         foreach (Renderer renderer in holder.GetComponentsInChildren<Renderer>(true))
         {
@@ -990,17 +1211,7 @@ public class VRFieldModels
 
             if (renderer.enabled && !outlineShell)
             {
-                Bounds local = renderer.bounds;
-
-                if (first)
-                {
-                    bounds = local;
-                    first = false;
-                }
-                else
-                {
-                    bounds.Encapsulate(local);
-                }
+                measured.Add(renderer);
             }
         }
 
@@ -1009,25 +1220,208 @@ public class VRFieldModels
             t.gameObject.layer = VRRig.Layer;
         }
 
-        float worldScale = Mathf.Max(1e-4f, holder.lossyScale.y);
-        float height = Mathf.Max(0.1f, bounds.size.y / worldScale);
-        width = Mathf.Max(bounds.size.x, bounds.size.z) / worldScale;
-        float scale = Mathf.Min(target / height, 2.2f * VRSettings.ModelScale / Mathf.Max(0.1f, width));
-        holder.localScale = Vector3.one * scale;
-
-        // Some files place the figure far from their origin (or lift it): move the model so
-        // its feet stand centred on the spot (bottom-centre of its bounds at the parent origin).
-        // Done in the parent's space, so it works whatever the parent's scale or rotation.
-        if (!first && holder.parent != null)
+        if (measured.Count == 0)
         {
-            Transform parent = holder.parent;
-            Vector3 feetWorld = new Vector3(bounds.center.x, bounds.min.y, bounds.center.z);
-            // bounds were measured before scaling (holder at scale 1, same position): rescale the offset.
-            Vector3 feetLocal = parent.InverseTransformPoint(feetWorld);
-            holder.localPosition = -feetLocal * scale;
+            width = 1f;
+            float fallback = Mathf.Max(0.001f, target);
+            holder.localScale = Vector3.one * fallback;
+            return fallback;
         }
 
+        string key = ShapeKey(measured);
+
+        if (!_shapes.TryGetValue(key, out Bounds shape))
+        {
+            shape = MeasureIdle(holder, measured);
+            _shapes[key] = shape;
+        }
+
+        float height = Mathf.Max(0.05f, shape.size.y);
+        width = Mathf.Max(0.05f, Mathf.Max(shape.size.x, shape.size.z));
+        // Very wide models (wings, tails) are capped, but the cap grows with the level's
+        // height so big Digimon stay big.
+        float widthCap = Mathf.Max(2.2f * VRSettings.ModelScale, target * 1.6f);
+        float scale = Mathf.Min(target / height, widthCap / width);
+        holder.localScale = Vector3.one * scale;
+        // Feet (bottom-centre of the idle pose) on the parent's origin.
+        holder.localPosition = -(holder.localRotation * new Vector3(shape.center.x, shape.min.y, shape.center.z)) * scale;
         return scale;
+    }
+
+    // Diagonal of the world-space box around the vertices (a sample of them is enough).
+    static float SizeOf(Vector3[] vertices, Matrix4x4 toWorld)
+    {
+        if (vertices.Length == 0)
+        {
+            return 0f;
+        }
+
+        int step = Mathf.Max(1, vertices.Length / 400);
+        Vector3 min = toWorld.MultiplyPoint3x4(vertices[0]);
+        Vector3 max = min;
+
+        for (int i = step; i < vertices.Length; i += step)
+        {
+            Vector3 p = toWorld.MultiplyPoint3x4(vertices[i]);
+            min = Vector3.Min(min, p);
+            max = Vector3.Max(max, p);
+        }
+
+        return (max - min).magnitude;
+    }
+
+    static string ShapeKey(List<Renderer> renderers)
+    {
+        System.Text.StringBuilder key = new System.Text.StringBuilder();
+
+        foreach (Renderer renderer in renderers)
+        {
+            Mesh mesh = renderer is SkinnedMeshRenderer skinned ? skinned.sharedMesh
+                : renderer.TryGetComponent(out MeshFilter filter) ? filter.sharedMesh : null;
+            key.Append(mesh != null ? mesh.GetInstanceID() : 0).Append(',');
+        }
+
+        return key.ToString();
+    }
+
+    // Bounds of the model in holder space (holder at scale 1, origin), in its idle pose.
+    static Bounds MeasureIdle(Transform holder, List<Renderer> renderers)
+    {
+        Animation anim = holder.GetComponentInChildren<Animation>(true);
+        AnimationClip idle = anim != null ? (FindClip(anim, "_bn01") ?? FindClip(anim, "_bn02")) : null;
+        List<KeyValuePair<AnimationState, (bool, float, float)>> saved = null;
+
+        // Pose the model on the first frame of its idle (only the idle, then restore the states).
+        if (idle != null)
+        {
+            try
+            {
+                saved = new List<KeyValuePair<AnimationState, (bool, float, float)>>();
+
+                foreach (AnimationState state in anim)
+                {
+                    saved.Add(new KeyValuePair<AnimationState, (bool, float, float)>(state, (state.enabled, state.weight, state.time)));
+                    state.enabled = false;
+                }
+
+                AnimationState idleState = anim[idle.name];
+                idleState.enabled = true;
+                idleState.weight = 1f;
+                idleState.time = 0f;
+                anim.Sample();
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning("[DCGO VR] Model idle pose for measuring failed: " + exception.Message);
+            }
+        }
+
+        Matrix4x4 toHolder = holder.worldToLocalMatrix;
+        Bounds bounds = new Bounds();
+        bool first = true;
+        Mesh baked = null;
+
+        void Add(Vector3 point)
+        {
+            if (first)
+            {
+                bounds = new Bounds(point, Vector3.zero);
+                first = false;
+            }
+            else
+            {
+                bounds.Encapsulate(point);
+            }
+        }
+
+        void AddBounds(Bounds world)
+        {
+            Vector3 min = world.min;
+            Vector3 max = world.max;
+
+            for (int i = 0; i < 8; i++)
+            {
+                Add(toHolder.MultiplyPoint3x4(new Vector3((i & 1) == 0 ? min.x : max.x, (i & 2) == 0 ? min.y : max.y, (i & 4) == 0 ? min.z : max.z)));
+            }
+        }
+
+        foreach (Renderer renderer in renderers)
+        {
+            try
+            {
+                Vector3[] vertices;
+                Matrix4x4 toWorld;
+
+                if (renderer is SkinnedMeshRenderer skinned)
+                {
+                    if (skinned.sharedMesh == null)
+                    {
+                        continue;
+                    }
+
+                    baked = baked != null ? baked : new Mesh();
+                    skinned.BakeMesh(baked);
+                    vertices = baked.vertices;
+                    // A baked mesh is relative to the renderer's position and rotation; whether it
+                    // carries the renderer's scale depends on the Unity version. Take the reading
+                    // that agrees with Unity's own (rough) bounds: the two differ by the scale.
+                    Transform t = skinned.transform;
+                    Matrix4x4 unscaled = Matrix4x4.TRS(t.position, t.rotation, Vector3.one);
+                    Matrix4x4 scaled = t.localToWorldMatrix;
+                    toWorld = Mathf.Abs(Mathf.Log(Mathf.Max(1e-6f, SizeOf(vertices, unscaled)) / Mathf.Max(1e-6f, renderer.bounds.size.magnitude)))
+                              <= Mathf.Abs(Mathf.Log(Mathf.Max(1e-6f, SizeOf(vertices, scaled)) / Mathf.Max(1e-6f, renderer.bounds.size.magnitude)))
+                        ? unscaled
+                        : scaled;
+                }
+                else if (renderer.TryGetComponent(out MeshFilter filter) && filter.sharedMesh != null && filter.sharedMesh.isReadable)
+                {
+                    vertices = filter.sharedMesh.vertices;
+                    toWorld = renderer.transform.localToWorldMatrix;
+                }
+                else
+                {
+                    AddBounds(renderer.bounds);
+                    continue;
+                }
+
+                if (vertices.Length == 0)
+                {
+                    AddBounds(renderer.bounds);
+                    continue;
+                }
+
+                Matrix4x4 m = toHolder * toWorld;
+
+                foreach (Vector3 vertex in vertices)
+                {
+                    Add(m.MultiplyPoint3x4(vertex));
+                }
+            }
+            catch (Exception)
+            {
+                AddBounds(renderer.bounds);
+            }
+        }
+
+        if (baked != null)
+        {
+            UnityEngine.Object.Destroy(baked);
+        }
+
+        if (saved != null)
+        {
+            foreach (KeyValuePair<AnimationState, (bool, float, float)> pair in saved)
+            {
+                if (pair.Key != null)
+                {
+                    pair.Key.enabled = pair.Value.Item1;
+                    pair.Key.weight = pair.Value.Item2;
+                    pair.Key.time = pair.Value.Item3;
+                }
+            }
+        }
+
+        return first ? new Bounds(Vector3.up * 0.5f, Vector3.one) : bounds;
     }
 
     /// <summary>Automatic figure height for a card level (before hand tuning).</summary>
